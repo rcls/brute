@@ -4,7 +4,7 @@ include ../Rules.mk
 all: brute
 
 brute: brute.o
-brute LIBS = -lssl
+brute LIBS = -lcrypto
 
 .PHONY: clean all
 clean:

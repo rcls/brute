@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <openssl/md5.h>
 #include <string.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -112,23 +113,61 @@ static void print_bytes (const unsigned char * b, int n)
 	printf ("%02x", b[i]);
 }
 
-/* Produce a report on the collision.  */
-static void report (int startA, int countA, int startB, int countB)
+/* Do the catch up iteration for extracting the final collision.
+ * Returns false if this turns out to be a pre-image, true if it's OK.  */
+static bool adjustment (unsigned char buf[STORE], int count,
+			const unsigned char other[STORE])
 {
-    unsigned char bufA[MD5_DIGEST_LENGTH];
-    unsigned char bufB[MD5_DIGEST_LENGTH];
-    prep (bufA, startA);
-    prep (bufB, startB);
-    for (int i = countA; i < countB; ++i) {
-	do_MD5 (bufB, bufB);
-	lastcp (bufB, bufB);
+    if (count <= 0)
+	return true;
+
+    unsigned char hash[MD5_DIGEST_LENGTH];
+    memcpy (hash, buf, STORE);
+
+    while (--count) {
+	do_MD5 (hash, hash);
+	lastcp (hash, hash);
     }
-    for (int i = countB; i < countA; ++i) {
-	do_MD5 (bufA, bufA);
-	lastcp (bufA, bufA);
+    memcpy (buf, hash, STORE);
+    do_MD5 (hash, buf);
+    if (memcmp (hash, other, WHOLE) != 0 ||
+	(LEFT != 0 && ((hash[WHOLE] ^ other[WHOLE]) & (0xff << (8-LEFT))) != 0))
+    {
+	memcpy (buf, hash, WHOLE);
+	lastcp (buf, hash);
+	return true;
     }
+
+    /* We have a pre-image not a collision.  Report it.  */
+    printf ("Preimage:\n");
+    print_bytes (buf, STORE);
+    printf ("\t");
+    print_bytes (other, STORE);
+    printf ("\t");
+    print_bytes (hash, MD5_DIGEST_LENGTH);
+    printf ("\n");
+    return false;
+}
+
+/* Produce a report on the collision.  Return false if it's actually a
+ * preimage, true if it's OK.  */
+static bool report (int startA, int countA, int startB, int countB)
+{
+    unsigned char bufA[STORE];
+    unsigned char bufB[STORE];
     unsigned char nA[MD5_DIGEST_LENGTH];
     unsigned char nB[MD5_DIGEST_LENGTH];
+    /* Search for the actual collision.  */
+    prep (bufA, startA);
+    prep (bufB, startB);
+    /* ... adjust the starting points for the search, checking for a
+     * pre-image.  */
+    if (!adjustment (bufB, countB - countA, bufA))
+	return false;
+    if (!adjustment (bufA, countA - countB, bufB))
+	return false;
+
+    /* Now search, iterating both items together.  */
     while (1) {
 	do_MD5 (nA, bufA);
 	do_MD5 (nB, bufB);
@@ -140,6 +179,7 @@ static void report (int startA, int countA, int startB, int countB)
 	memcpy (bufB, nB, WHOLE);
 	lastcp (bufB, nB);
     }
+    /* Print it out.  */
     print_bytes (bufA, STORE);
     printf ("\t");
     print_bytes (nA, MD5_DIGEST_LENGTH);
@@ -149,6 +189,13 @@ static void report (int startA, int countA, int startB, int countB)
     printf ("\t");
     print_bytes (nB, MD5_DIGEST_LENGTH);
     printf ("\n");
+
+    int n;
+    for (n = 0; n < 8 * MD5_DIGEST_LENGTH; ++n)
+	if ((nA[n / 8] ^ nB[n / 8]) & (0x80 >> (n % 8)))
+	    break;
+    printf ("\t%i bits of collision.\n", n);
+    return true;
 }    
 
 int main()
@@ -165,17 +212,15 @@ int main()
 	/* Putting the items in a hash would be quicker...  */
 	for (i = n * KEEP; i != (n + 1) * KEEP; ++i)
 	    for (j = 0; j != i; ++j)
-		if (memcmp (items[i].out, items[j].out, STORE) == 0)
-		    goto got_one;
+		if (memcmp (items[i].out, items[j].out, STORE) == 0) {
+		    printf ("%i\t%i\n%i\t%i\t",
+			    items[i].start, items[i].count,
+			    items[j].start, items[j].count);
+		    print_bytes (items[i].out, STORE);
+		    printf ("\n");
+		    if (report (items[i].start, items[i].count,
+				items[j].start, items[j].count))
+			return 0;
+		}
     }
-
-got_one:
-    printf ("%i\t%i\n%i\t%i\t",
-	    items[i].start, items[i].count,
-	    items[j].start, items[j].count);
-    print_bytes (items[i].out, STORE);
-    printf ("\n");
-    report (items[i].start, items[i].count,
-	    items[j].start, items[j].count);
-
 }
