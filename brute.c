@@ -30,45 +30,43 @@ static const int ITERATE = 1<<22;
  * too small.  */
 static const int KEEP = 16;
 
-/* Bytes to pass into hash function.  Note that we expand into newline
- * terminated hex.  */
-static const int BYTES = (BITS + 7) / 8;
+/* Number of complete bytes in hash output.  */
+static const int WHOLE = BITS / 8;
+/* Number of bytes of hash to store.  */
+#define STORE ((BITS + 7) / 8)
 
-/* Number of complete words in hash output.  */
-static const int WHOLE = BITS / 32;
-/* Number of words of hash to store.  */
-#define STORE ((BITS + 31) / 32)
-
-/* Bit mask for any final partial word.  I didn't invent the crazy
- * bytes are big endian, words are little endian thing, OK?  */
-#define MASK_BYTES ((1 << (BITS & 24)) - 1)
-#define MASK_BITS (256 - (1 << (8 - (BITS & 7))))
-static const unsigned int MASK = MASK_BYTES + (MASK_BITS << (BITS & 24));
+/* Bit mask for any final partial byte.  */
+static const int MASK = 256 - (1 << (8 - (BITS & 7)));
 
 /* When we say inline we mean it --- we're relying heavily on constant
  * folding functions such as word() below.  */
 #define inline __attribute__ ((always_inline))
 
-static inline unsigned int nibble_hex (int n, unsigned int word)
+static inline unsigned int hexc (unsigned int n)
 {
-    int nn = (word >> (4 * n)) & 15;
-    return nn < 10 ? nn + '0' : nn - 10 + 'a';
+    unsigned int r = n + '0';
+    if (n > 9)
+	r += 'a' - '0' - 10;
+    return r;
 }
 
-static inline unsigned int byte (int n, const unsigned int in[STORE])
+static inline unsigned int byte (int n, const unsigned char in[STORE])
 {
-    if (n < BYTES * 2)
-	/* Bytes are big endian, words are little endian...  */
-	return nibble_hex ((n & 7) ^ 1, in[n / 8]);
-    else if (n == BYTES * 2)
+    if (n < STORE * 2)
+	/* Bytes are big endian...  */
+	if ((n & 1) == 0)
+	    return hexc (in[n / 2] >> 4);
+	else
+	    return hexc (in[n / 2] & 15);
+    else if (n == STORE * 2)
 	return '\n';
-    else if (n == BYTES * 2 + 1)
+    else if (n == STORE * 2 + 1)
 	return 0x80;
     else
 	return 0;
 }
 
-static inline unsigned int word (int n, const unsigned int in[STORE])
+static inline unsigned int word (int n, const unsigned char in[STORE])
 {
     n *= 4;
     return byte (n, in) + (byte (n + 1, in) << 8) + (byte (n + 2, in) << 16) + (byte (n + 3, in) << 24);
@@ -93,20 +91,17 @@ static inline unsigned int word (int n, const unsigned int in[STORE])
 #define S43 15
 #define S44 21
 
-/* F, G, H and I are basic MD5 functions.
- */
+/* F, G, H and I are basic MD5 functions.  */
 #define F(x, y, z) (((x) & (y)) | ((~x) & (z)))
 #define G(x, y, z) (((x) & (z)) | ((y) & (~z)))
 #define H(x, y, z) ((x) ^ (y) ^ (z))
 #define I(x, y, z) ((y) ^ ((x) | (~z)))
 
-/* ROTATE_LEFT rotates x left n bits.
- */
+/* ROTATE_LEFT rotates x left n bits.  */
 #define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
 
 /* FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
-   Rotation is separate from addition to prevent recomputation.
-*/
+ * Rotation is separate from addition to prevent recomputation.  */
 #define FF(a, b, c, d, x, s, ac) {				\
 	(a) += F ((b), (c), (d)) + (x) + (unsigned int)(ac);	\
 	(a) = ROTATE_LEFT ((a), (s));				\
@@ -128,8 +123,10 @@ static inline unsigned int word (int n, const unsigned int in[STORE])
 	(a) += (b);						\
     }
 
-static void do_MD5 (unsigned int out[4],
-		    const unsigned int in[STORE])
+/* Generate md5 hash, storing the first 'whole' complete bytes and
+ * masking the next byte by 'mask'.  Gets specialised to what we want.  */
+static inline void do_MD5 (unsigned char * out, int whole, int mask,
+			   const unsigned char in[STORE])
 {
     const unsigned int init0 = 0x67452301;
     const unsigned int init1 = 0xefcdab89;
@@ -170,7 +167,7 @@ static void do_MD5 (unsigned int out[4],
     FF (a, b, c, d, xx12, S11, 0x6b901122); /* 13 */
     const unsigned int xx13 = word (13, in);
     FF (d, a, b, c, xx13, S12, 0xfd987193); /* 14 */
-    const unsigned int xx14 = BYTES * 16 + 8; /* Account for hex expansion.  */
+    const unsigned int xx14 = STORE * 16 + 8; /* Account for hex expansion.  */
     FF (c, d, a, b, xx14, S13, 0xa679438e); /* 15 */
     const unsigned int xx15 = 0;
     FF (b, c, d, a, xx15, S14, 0x49b40821); /* 16 */
@@ -229,99 +226,126 @@ static void do_MD5 (unsigned int out[4],
     II (c, d, a, b, xx02, S43, 0x2ad7d2bb); /* 63 */
     II (b, c, d, a, xx09, S44, 0xeb86d391); /* 64 */
 
-    out[0] = init0 + a;
-    out[1] = init1 + b;
-    out[2] = init2 + c;
-    out[3] = init3 + d;
+    a += init0;
+    b += init1;
+    c += init2;
+    d += init3;
+
+    /* n, whole and mask are always constants, so the expressions
+     * below constant fold down to a shift and mask.  */
+#define SAVE_SELECT(n) (n < 4 ? a : (n < 8 ? b : (n < 12 ? c : d)))
+#define SAVE_BYTE(n) ((SAVE_SELECT(n) >> (8 * (n & 3))) & 255)
+#define SAVE(n) (n < whole ? out[n] = SAVE_BYTE(n) : ((mask && n == whole) ? out[n] = SAVE_BYTE(n) & MASK : 0))
+    SAVE(0);
+    SAVE(1);
+    SAVE(2);
+    SAVE(3);
+    SAVE(4);
+    SAVE(5);
+    SAVE(6);
+    SAVE(7);
+    SAVE(8);
+    SAVE(9);
+    SAVE(10);
+    SAVE(11);
+    SAVE(12);
+    SAVE(13);
+    SAVE(14);
+    SAVE(15);
+}
+
+static void md5_short (unsigned char out[STORE], const unsigned char in[STORE])
+{
+    do_MD5 (out, WHOLE, MASK, in);
+}
+
+static void md5_long (unsigned char out[16], const unsigned char in[STORE])
+{
+    do_MD5 (out, 16, 0, in);
 }
 
 typedef struct Item
 {
     int start;
     int count;
-    unsigned int out[STORE];
+    unsigned char out[STORE];
 } Item;
 
-static inline void lastcp (unsigned int out[STORE], const unsigned int in[STORE])
+static void prep (unsigned char * p, int start)
 {
-    if (MASK)
-	out[WHOLE] = in[WHOLE] & MASK;
-}
-
-static void prep (unsigned int * p, int start)
-{
-    memset (p, 0, STORE * sizeof (unsigned int));
-    *p = start;
+    memset (p, 0, STORE);
+    for (; start; start >>= 8)
+	*p++ = start & 255;
 }
 
 /* Do a unit of work.  Iterate md5 ITERATE times, starting from start.
  * Keep the KEEP smallest hash results, returning them in U.  */
 static void unit (Item U[KEEP], int start)
 {
-    unsigned int current[4];
+    unsigned char current[STORE];
     prep (current, start);
 
     for (int i = 0; i != KEEP; ++i)
-	memset (U[i].out, 0xff, STORE * sizeof (unsigned int));
+	memset (U[i].out, 0xff, STORE);
 
     for (int count = 1; count != ITERATE + 1; ++count) {
-	do_MD5 (current, current);
-	lastcp (current, current);
+	md5_short (current, current);
 
 	/* Quick case, don't keep.  */
-	if (memcmp (current, U[0].out, STORE * sizeof (unsigned int)) > 0)
+	if (__builtin_expect (current[0] != 0, 1))
+	    continue;
+
+	if (memcmp (current, U[0].out, STORE) > 0)
 	    continue;
 
 	/* Put this item into the unit array, keeping in decreasing
 	 * order of hash.  */
 	int p;
 	for (p = 0; p != KEEP - 1; ++p) {
-	    if (memcmp (current, U[p+1].out, STORE * sizeof (unsigned int)) > 0)
+	    if (memcmp (current, U[p+1].out, STORE) > 0)
 		break;		/* Not at p+1.  */
 	    U[p] = U[p+1];
 	}
 	/* Put into position p.  */
 	U[p].start = start;
 	U[p].count = count;
-	memcpy (U[p].out, current, STORE * sizeof (unsigned int));
+	memcpy (U[p].out, current, STORE);
     }
 }
 
-/* Print a block of bytes in hex, least significant first.  */
-static void print_bytes (FILE * f, const unsigned int * b, int n)
+/* Print a block of bytes in hex.  */
+static void print_bytes (FILE * f, const unsigned char * p, int n)
 {
     for (int i = 0; i != n; ++i)
-	fprintf (f, "%02x", (b[i / 4] >> ((i & 3) * 8)) & 255);
+	fprintf (f, "%02x", p[i]);
 }
 
 /* Do the catch up iteration for extracting the final collision.
  * Returns false if this turns out to be a pre-image, true if it's OK.  */
-static bool adjustment (unsigned int buf[STORE], int count,
-			const unsigned int other[STORE])
+static bool adjustment (unsigned char buf[STORE], int count,
+			const unsigned char other[STORE])
 {
     if (count <= 0)
 	return true;
 
-    unsigned int hash[4];
-    memcpy (hash, buf, STORE * sizeof (unsigned int));
+    unsigned char pre[STORE];
+    memcpy (pre, buf, STORE);
 
-    while (--count) {
-	do_MD5 (hash, hash);
-	lastcp (hash, hash);
-    }
-    unsigned int final_in[STORE];
-    memcpy (final_in, hash, STORE * sizeof (unsigned int));
-    do_MD5 (hash, final_in);
-    memcpy (buf, hash, WHOLE * sizeof (unsigned int));
-    lastcp (buf, hash);
-    if (memcmp (buf, other, WHOLE * sizeof (unsigned int)) != 0)
+    while (--count)		/* Loop does all but one iteration.  */
+	md5_short (pre, pre);
+
+    md5_short (buf, pre);
+    if (memcmp (buf, other, STORE) != 0)
 	return true;
 
     /* We have a pre-image not a collision.  Report it.  */
+    unsigned char hash[16];
+    md5_long (hash, pre);
+
     printf ("Preimage:\n");
-    print_bytes (stdout, final_in, BYTES);
+    print_bytes (stdout, pre, STORE);
     printf ("\t");
-    print_bytes (stdout, other, BYTES);
+    print_bytes (stdout, other, STORE);
     printf ("\t");
     print_bytes (stdout, hash, 16);
     printf ("\n");
@@ -333,59 +357,67 @@ static bool adjustment (unsigned int buf[STORE], int count,
  * preimage, true if it's OK.  */
 static bool report (int startA, int countA, int startB, int countB)
 {
-    unsigned int bufA[STORE];
-    unsigned int bufB[STORE];
-    unsigned int hA[4];
-    unsigned int hB[4];
+    unsigned char A0[STORE];
+    unsigned char B0[STORE];
+    unsigned char A1[STORE];
+    unsigned char B1[STORE];
     /* Search for the actual collision.  */
-    prep (bufA, startA);
-    prep (bufB, startB);
+    prep (A0, startA);
+    prep (B0, startB);
     /* ... adjust the starting points for the search, checking for a
      * pre-image.  */
-    if (!adjustment (bufB, countB - countA, bufA))
+    if (!adjustment (B0, countB - countA, A0))
 	return false;
-    if (!adjustment (bufA, countA - countB, bufB))
+    if (!adjustment (A0, countA - countB, B0))
 	return false;
 
     /* Now search, iterating both items together.  */
     while (1) {
-	do_MD5 (hA, bufA);
-	do_MD5 (hB, bufB);
-	if (memcmp (hA, hB, WHOLE * sizeof (unsigned int)) == 0 &&
-	    ((hA[WHOLE] ^ hB[WHOLE]) & MASK) == 0)
+	md5_short (A1, A0);
+	md5_short (B1, B0);
+	if (memcmp (A1, B1, STORE) == 0)
+	    goto in_zero;
+	md5_short (A0, A1);
+	md5_short (B0, B1);
+	if (memcmp (A0, B0, STORE) == 0)
 	    break;
-	memcpy (bufA, hA, WHOLE * sizeof (unsigned int));
-	lastcp (bufA, hA);
-	memcpy (bufB, hB, WHOLE * sizeof (unsigned int));
-	lastcp (bufB, hB);
     }
+    memcpy (A0, A1, STORE);
+    memcpy (B0, B1, STORE);
+
+in_zero:
+    ;
     /* Print it out.  */
-    print_bytes (stdout, bufA, BYTES);
+    unsigned char hashA[16];
+    unsigned char hashB[16];
+    md5_long (hashA, A0);
+    md5_long (hashB, B0);
+
+    print_bytes (stdout, A0, STORE);
     printf ("\t");
-    print_bytes (stdout, hA, 16);
+    print_bytes (stdout, hashA, 16);
     printf ("\n");
 
-    print_bytes (stdout, bufB, BYTES);
+    print_bytes (stdout, B0, STORE);
     printf ("\t");
-    print_bytes (stdout, hB, 16);
+    print_bytes (stdout, hashB, 16);
     printf ("\n");
 
     int n;
     for (n = 0; n < 128; ++n)
-	/* Did I mention how much I love mixed endian arithmetic?  */
-	if ((hA[n / 32] ^ hB[n / 32]) & (1 << (7 ^ (n & 31))))
+	if ((hashA[n / 8] ^ hashB[n / 8]) & (128 >> (n & 7)))
 	    break;
     printf ("\t%i bits of collision.\n", n);
 
     FILE * p = popen ("md5sum", "w");
     if (p) {
-	print_bytes (p, bufA, BYTES);
+	print_bytes (p, A0, STORE);
 	fprintf (p, "\n");
 	fclose (p);
     }
     p = popen ("md5sum", "w");
     if (p) {
-	print_bytes (p, bufB, BYTES);
+	print_bytes (p, B0, STORE);
 	fprintf (p, "\n");
 	fclose (p);
     }
@@ -408,17 +440,20 @@ int main()
 	printf ("Unit %i\n", n);
 	/* Putting the items in a hash would be quicker...  But this
 	 * shouldn't be speed critical anyway.  */
-	for (int i = n * KEEP; i != (n + 1) * KEEP; ++i)
+	for (int i = n * KEEP; i != (n + 1) * KEEP; ++i) {
+	    if (items[i].out[0] == 255)
+		continue;	/* Unlikely unless ITERATE is too small.  */
 	    for (int j = 0; j != i; ++j)
-		if (memcmp (items[i].out, items[j].out, STORE * sizeof (unsigned int)) == 0) {
+		if (memcmp (items[i].out, items[j].out, STORE) == 0) {
 		    printf ("%i\t%i\n%i\t%i\t",
 			    items[i].start, items[i].count,
 			    items[j].start, items[j].count);
-		    print_bytes (stdout, items[i].out, BYTES);
+		    print_bytes (stdout, items[i].out, STORE);
 		    printf ("\n");
 		    if (report (items[i].start, items[i].count,
 				items[j].start, items[j].count))
 			exit (0);
 		}
+	}
     }
 }
