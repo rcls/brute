@@ -1,6 +1,8 @@
 
 include ../Rules.mk
 
+CFLAGS += -Winline -fomit-frame-pointer -march=i686 -mcpu=i686
+
 all: brute
 
 brute: brute.o
