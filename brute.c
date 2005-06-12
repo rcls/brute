@@ -21,10 +21,10 @@
 /* Bits of hash to take.  The hash function we compute collisions for
  * is the first BITS bits of the md5 value.  The program will take
  * around 1<<(BITS/2) microseconds to run.  */
-#define BITS 52
+#define BITS 48
 
 /* Iterations per processing unit.  1<<(BITS/2-5) is about appropriate.  */
-static const int ITERATE = 1<<22;
+static const int ITERATE = 1<<20;
 
 /* Number of items to keep per unit.  Not critical but don't want it
  * too small.  */
@@ -42,34 +42,118 @@ static const int MASK = 256 - (1 << (8 - (BITS & 7)));
  * folding functions such as word() below.  */
 #define inline __attribute__ ((always_inline))
 
-static inline unsigned int hexc (unsigned int n)
+/************************* MMX stuff.  **************************/
+
+/* Number of 32 bit words in a register.  */
+#define WIDTH 1
+
+#if WIDTH == 1
+
+typedef unsigned value;
+
+#define ANDN(a,b) (~(a) & (b))
+#define AND(a,b)  ((a) & (b))
+#define NOT(a)    (~(a))
+#define OR(a,b)   ((a) | (b))
+#define XOR(a,b)  ((a) ^ (b))
+#define ADD(a,b)  ((a) + (b))
+#define SUB(a,b)  ((a) - (b))
+
+#define DIAG(a) ((unsigned) (a))
+#define FIRST(a) (a)
+
+#define LEFT(a, count) ((a) << (count))
+#define RIGHT(a, count) ((a) >> (count))
+
+static inline value ROTATE_LEFT (value a, unsigned count)
 {
-    unsigned int r = n + '0';
-    if (n > 9)
-	r += 'a' - '0' - 10;
-    return r;
+    return OR (LEFT (a, count), RIGHT (a, 32 - count));
 }
 
-static inline unsigned int byte (int n, const unsigned char in[STORE])
+#define IF(a,b,c) ((a) ? (b) : (c))
+#define GREATER_THAN(a,b) ((a) > (b))
+
+#elif WIDTH == 2
+
+typedef unsigned __attribute__ ((vector_size (4 * WIDTH))) value;
+
+/* ~a & b.  */
+#define ANDN(a,b) __builtin_ia32_pandn ((a), (b))
+#define AND(a,b)  __builtin_ia32_pand  ((a), (b))
+#define NOT(a)    ANDN((a),(value) DIAG (0))
+#define OR(a,b)   __builtin_ia32_por   ((a), (b))
+#define XOR(a,b)  __builtin_ia32_pxor  ((a), (b))
+#define ADD(a,b)  __builtin_ia32_paddd ((a), (b))
+#define SUB(a,b)  __builtin_ia32_psubd ((a), (b))
+
+static inline value DIAG (int a)
+{
+    return __builtin_ia32_vec_init_v2si (a, a);
+}
+/* Convert the lower 32 bits of the __m64 object into an integer.  */
+static inline unsigned FIRST (value a)
+{
+  return __builtin_ia32_vec_ext_v2si (a, 0);
+}
+
+static inline value LEFT (value a, unsigned count)
+{
+    return __builtin_ia32_pslld (a, count);
+}
+
+static inline value RIGHT (value a, unsigned count)
+{
+    return __builtin_ia32_psrld (a, count);
+}
+
+static inline value ROTATE_LEFT (value a, unsigned count)
+{
+    return OR (LEFT (a, count), RIGHT (a, 32 - count));
+}
+
+static inline value IF (value a, value b, value c)
+{
+    return OR (AND (a, b), ANDN(a, c));
+}
+
+#define GREATER_THAN(a, b) __builtin_ia32_pcmpgtd ((a), (b))
+    
+#elif
+
+#error Huh
+
+#endif
+
+static inline value hexc (value n)
+{
+    return IF (GREATER_THAN (n, DIAG(9)),
+	       ADD (n, DIAG ('a' - 10)),
+	       ADD (n, DIAG ('0')));
+}
+
+static inline value byte (int n, const unsigned char in[STORE])
 {
     if (n < STORE * 2)
 	/* Bytes are big endian...  */
 	if ((n & 1) == 0)
-	    return hexc (in[n / 2] >> 4);
+	    return hexc (RIGHT (DIAG (in[n / 2]), 4));
 	else
-	    return hexc (in[n / 2] & 15);
+	    return hexc (AND (DIAG (in[n / 2]), DIAG (15)));
     else if (n == STORE * 2)
-	return '\n';
+	return DIAG ('\n');
     else if (n == STORE * 2 + 1)
-	return 0x80;
+	return DIAG (128);
     else
-	return 0;
+	return DIAG (0);
 }
 
-static inline unsigned int word (int n, const unsigned char in[STORE])
+static inline value word (int n, const unsigned char in[STORE])
 {
     n *= 4;
-    return byte (n, in) + (byte (n + 1, in) << 8) + (byte (n + 2, in) << 16) + (byte (n + 3, in) << 24);
+    return ADD (ADD (byte (n, in),
+		     LEFT (byte (n + 1, in), 8)),
+		ADD (LEFT (byte (n + 2, in), 16),
+		     LEFT (byte (n + 3, in), 24)));
 }
 
 /* Bits to shift left at various stages.  */
@@ -92,84 +176,76 @@ static inline unsigned int word (int n, const unsigned char in[STORE])
 #define S44 21
 
 /* F, G, H and I are basic MD5 functions.  */
-#define F(x, y, z) (((x) & (y)) | ((~x) & (z)))
-#define G(x, y, z) (((x) & (z)) | ((y) & (~z)))
-#define H(x, y, z) ((x) ^ (y) ^ (z))
-#define I(x, y, z) ((y) ^ ((x) | (~z)))
+#define F(x, y, z) OR (AND ((x), (y)), ANDN ((x), (z)))
+#define G(x, y, z) OR (AND ((z), (x)), ANDN ((z), (y)))
+#define H(x, y, z) XOR ((x), XOR ((y), (z)))
+#define I(x, y, z) XOR ((y), OR ((x), NOT ((z))))
+
+#define A4(a, b, c, d) ADD (ADD ((a), (b)), ADD ((c), (d)))
 
 /* ROTATE_LEFT rotates x left n bits.  */
-#define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
+//#define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
+
+#define GENERATE(FUN,a, b, c, d, x, s, ac) {		\
+	(a) = A4 ((a), FUN ((b), (c), (d)), (x), DIAG (ac));	\
+	(a) = ROTATE_LEFT ((a), (s));			\
+        (a) = ADD ((a), (b));				\
+    }
 
 /* FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
  * Rotation is separate from addition to prevent recomputation.  */
-#define FF(a, b, c, d, x, s, ac) {				\
-	(a) += F ((b), (c), (d)) + (x) + (unsigned int)(ac);	\
-	(a) = ROTATE_LEFT ((a), (s));				\
-        (a) += (b);						\
-    }
-#define GG(a, b, c, d, x, s, ac) {				\
-	(a) += G ((b), (c), (d)) + (x) + (unsigned int)(ac);	\
-	(a) = ROTATE_LEFT ((a), (s));				\
-	(a) += (b);						\
-    }
-#define HH(a, b, c, d, x, s, ac) {				\
-	(a) += H ((b), (c), (d)) + (x) + (unsigned int)(ac);	\
-	(a) = ROTATE_LEFT ((a), (s));				\
-	(a) += (b);						\
-    }
-#define II(a, b, c, d, x, s, ac) {				\
-	(a) += I ((b), (c), (d)) + (x) + (unsigned int)(ac);	\
-	(a) = ROTATE_LEFT ((a), (s));				\
-	(a) += (b);						\
-    }
+#define FF(a, b, c, d, x, s, ac) GENERATE (F, a, b, c, d, x, s, ac)
+#define GG(a, b, c, d, x, s, ac) GENERATE (G, a, b, c, d, x, s, ac)
+#define HH(a, b, c, d, x, s, ac) GENERATE (H, a, b, c, d, x, s, ac)
+#define II(a, b, c, d, x, s, ac) GENERATE (I, a, b, c, d, x, s, ac)
 
 /* Generate md5 hash, storing the first 'whole' complete bytes and
  * masking the next byte by 'mask'.  Gets specialised to what we want.  */
 static inline void do_MD5 (unsigned char * out, int whole, int mask,
 			   const unsigned char in[STORE])
 {
-    const unsigned int init0 = 0x67452301;
-    const unsigned int init1 = 0xefcdab89;
-    const unsigned int init2 = 0x98badcfe;
-    const unsigned int init3 = 0x10325476;
+    const value init0 = DIAG (0x67452301);
+    const value init1 = DIAG (0xefcdab89);
+    const value init2 = DIAG (0x98badcfe);
+    const value init3 = DIAG (0x10325476);
 
-    unsigned int a = init0;
-    unsigned int b = init1;
-    unsigned int c = init2;
-    unsigned int d = init3;
+    value a = init0;
+    value b = init1;
+    value c = init2;
+    value d = init3;
 
     /* Round 1 */
-    const unsigned int xx00 = word (0, in);
+    const value xx00 = word (0, in);
     FF (a, b, c, d, xx00, S11, 0xd76aa478); /* 1 */
-    const unsigned int xx01 = word (1, in);
+    const value xx01 = word (1, in);
     FF (d, a, b, c, xx01, S12, 0xe8c7b756); /* 2 */
-    const unsigned int xx02 = word (2, in);
+    const value xx02 = word (2, in);
     FF (c, d, a, b, xx02, S13, 0x242070db); /* 3 */
-    const unsigned int xx03 = word (3, in);
+    const value xx03 = word (3, in);
     FF (b, c, d, a, xx03, S14, 0xc1bdceee); /* 4 */
-    const unsigned int xx04 = word (4, in);
+    const value xx04 = word (4, in);
     FF (a, b, c, d, xx04, S11, 0xf57c0faf); /* 5 */
-    const unsigned int xx05 = word (5, in);
+    const value xx05 = word (5, in);
     FF (d, a, b, c, xx05, S12, 0x4787c62a); /* 6 */
-    const unsigned int xx06 = word (6, in);
+    const value xx06 = word (6, in);
     FF (c, d, a, b, xx06, S13, 0xa8304613); /* 7 */
-    const unsigned int xx07 = word (7, in);
+    const value xx07 = word (7, in);
     FF (b, c, d, a, xx07, S14, 0xfd469501); /* 8 */
-    const unsigned int xx08 = word (8, in);
+    const value xx08 = word (8, in);
     FF (a, b, c, d, xx08, S11, 0x698098d8); /* 9 */
-    const unsigned int xx09 = word (9, in);
+    const value xx09 = word (9, in);
     FF (d, a, b, c, xx09, S12, 0x8b44f7af); /* 10 */
-    const unsigned int xx10 = word (10, in);
+    const value xx10 = word (10, in);
     FF (c, d, a, b, xx10, S13, 0xffff5bb1); /* 11 */
-    const unsigned int xx11 = word (11, in);
+    const value xx11 = word (11, in);
     FF (b, c, d, a, xx11, S14, 0x895cd7be); /* 12 */
-    const unsigned int xx12 = word (12, in);
+    const value xx12 = word (12, in);
     FF (a, b, c, d, xx12, S11, 0x6b901122); /* 13 */
-    const unsigned int xx13 = word (13, in);
+    const value xx13 = word (13, in);
     FF (d, a, b, c, xx13, S12, 0xfd987193); /* 14 */
-    const unsigned int xx14 = STORE * 16 + 8; /* Account for hex expansion.  */
+    const value xx14 = DIAG (STORE * 16 + 8); /* Account for hex expansion.  */
     FF (c, d, a, b, xx14, S13, 0xa679438e); /* 15 */
-    const unsigned int xx15 = 0;
+    const value xx15 = DIAG (0);
     FF (b, c, d, a, xx15, S14, 0x49b40821); /* 16 */
 
     /* Round 2 */
@@ -226,14 +302,14 @@ static inline void do_MD5 (unsigned char * out, int whole, int mask,
     II (c, d, a, b, xx02, S43, 0x2ad7d2bb); /* 63 */
     II (b, c, d, a, xx09, S44, 0xeb86d391); /* 64 */
 
-    a += init0;
-    b += init1;
-    c += init2;
-    d += init3;
+    a = ADD (a, init0);
+    b = ADD (b, init1);
+    c = ADD (c, init2);
+    d = ADD (d, init3);
 
     /* n, whole and mask are always constants, so the expressions
      * below constant fold down to a shift and mask.  */
-#define SAVE_SELECT(n) (n < 4 ? a : (n < 8 ? b : (n < 12 ? c : d)))
+#define SAVE_SELECT(n) FIRST (n < 4 ? a : (n < 8 ? b : (n < 12 ? c : d)))
 #define SAVE_BYTE(n) ((SAVE_SELECT(n) >> (8 * (n & 3))) & 255)
 #define SAVE(n) (n < whole ? out[n] = SAVE_BYTE(n) : ((mask && n == whole) ? out[n] = SAVE_BYTE(n) & MASK : 0))
     SAVE(0);

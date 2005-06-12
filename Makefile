@@ -1,12 +1,22 @@
 
 include ../Rules.mk
 
-CFLAGS += -Winline -fomit-frame-pointer -march=i686 -mcpu=i686
+CFLAGS += -g3 -Winline -fomit-frame-pointer -mtune=i686 -march=i686 -mmmx
 
 all: brute
 
 brute: brute.o
-brute LIBS = -lcrypto
+#brute LIBS = -lcrypto
+
+brute3.c: brute.c
+	cp brute.c brute3.c
+
+brute3: brute3.o
+brute3: GCC=/home/ralph/dev/gcc-3.4.3/bin/gcc
+
+brute-trunk.c: brute.c
+	cp brute.c brute-trunk.c
+brute-trunk: GCC=/home/ralph/dev/gcc/bin/gcc
 
 .PHONY: clean all
 clean:
