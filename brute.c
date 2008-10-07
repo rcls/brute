@@ -7,153 +7,339 @@
 
 /* Compile with something like
  *
- * gcc -O3 -Wall -Winline -Werror -std=gnu99 -fomit-frame-pointer -march=i686 -mcpu=i686 brute.c -o brute
+ * gcc -O3 -O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64 -Wall -Winline -std=gnu99 -fomit-frame-pointer brute.c -msse2 -o brute
  *
  * Your compiler better be good at constant folding inline functions
  * and static const variables - you may wanna check the assembly...
  */
 
+#include <assert.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+static inline uint32_t SWAP (uint32_t a)
+{
+    return __builtin_bswap32 (a);
+}
+
+
 /* Bits of hash to take.  The hash function we compute collisions for
- * is the first BITS bits of the md5 value.  The program will take
- * around 1<<(BITS/2) microseconds to run.  */
-#define BITS 48
+ * is the first BITS bits of the md5 value.  The program will require
+ * around 1<<(BITS/2) md5 operations.  */
+#define BITS 56
 
-/* Iterations per processing unit.  1<<(BITS/2-5) is about appropriate.  */
-static const int ITERATE = 1<<20;
-
-/* Number of items to keep per unit.  Not critical but don't want it
- * too small.  */
-static const int KEEP = 16;
-
-/* Number of complete bytes in hash output.  */
-static const int WHOLE = BITS / 8;
-/* Number of bytes of hash to store.  */
-#define STORE ((BITS + 7) / 8)
-
-/* Bit mask for any final partial byte.  */
-static const int MASK = 256 - (1 << (8 - (BITS & 7)));
+/* Proportion out of 1<<32 of results to take.  */
+#define PROPORTION 4096
 
 /* When we say inline we mean it --- we're relying heavily on constant
  * folding functions such as word() below.  */
-#define inline __attribute__ ((always_inline))
+#define INLINE __attribute__ ((always_inline))
+
+#define DEBUG(...) fprintf (stderr, __VA_ARGS__)
+#define NODEBUG(...) while (0) fprintf (stderr, __VA_ARGS__)
+
+#define MD5DEBUG NODEBUG
 
 /************************* MMX stuff.  **************************/
 
 /* Number of 32 bit words in a register.  */
-#define WIDTH 1
+#define WIDTH 4
 
-#if WIDTH == 1
+#if WIDTH == 4
 
-typedef unsigned value;
-
-#define ANDN(a,b) (~(a) & (b))
-#define AND(a,b)  ((a) & (b))
-#define NOT(a)    (~(a))
-#define OR(a,b)   ((a) | (b))
-#define XOR(a,b)  ((a) ^ (b))
-#define ADD(a,b)  ((a) + (b))
-#define SUB(a,b)  ((a) - (b))
-
-#define DIAG(a) ((unsigned) (a))
-#define FIRST(a) (a)
-
-#define LEFT(a, count) ((a) << (count))
-#define RIGHT(a, count) ((a) >> (count))
-
-static inline value ROTATE_LEFT (value a, unsigned count)
+typedef unsigned __attribute__ ((vector_size (4 * WIDTH))) value_t;
+static INLINE value_t DIAG (uint32_t a)
 {
-    return OR (LEFT (a, count), RIGHT (a, 32 - count));
+    return (value_t) { a, a, a, a };
 }
 
-#define IF(a,b,c) ((a) ? (b) : (c))
-#define GREATER_THAN(a,b) ((a) > (b))
 
-#elif WIDTH == 2
-
-typedef unsigned __attribute__ ((vector_size (4 * WIDTH))) value;
-
-/* ~a & b.  */
-#define ANDN(a,b) __builtin_ia32_pandn ((a), (b))
-#define AND(a,b)  __builtin_ia32_pand  ((a), (b))
-#define NOT(a)    ANDN((a),(value) DIAG (0))
-#define OR(a,b)   __builtin_ia32_por   ((a), (b))
-#define XOR(a,b)  __builtin_ia32_pxor  ((a), (b))
-#define ADD(a,b)  __builtin_ia32_paddd ((a), (b))
-#define SUB(a,b)  __builtin_ia32_psubd ((a), (b))
-
-static inline value DIAG (int a)
+static INLINE uint32_t FIRST (value_t A)
 {
-    return __builtin_ia32_vec_init_v2si (a, a);
-}
-/* Convert the lower 32 bits of the __m64 object into an integer.  */
-static inline unsigned FIRST (value a)
-{
-  return __builtin_ia32_vec_ext_v2si (a, 0);
+    typedef int int128 __attribute__ ((mode (TI)));
+    return (int128) A;
 }
 
-static inline value LEFT (value a, unsigned count)
+
+static inline value_t ANDN (value_t a, value_t b)
 {
-    return __builtin_ia32_pslld (a, count);
+    return __builtin_ia32_pandn128 (a, b);
+}
+#define ANDN ANDN
+
+
+#define GREATER_THAN(a, b) __builtin_ia32_pcmpgtd128 (a, b)
+
+#define RIGHT(a,n) __builtin_ia32_psrldi128 (a, n)
+#define LEFT(a,n) __builtin_ia32_pslldi128 (a, n)
+
+#define SPLIT(v,V0,V1) value_t V0; value_t V1; EXPAND (v, &V0, &V1);
+
+static INLINE int TEST (value_t v)
+{
+    value_t b = __builtin_ia32_pcmpgtd128 (DIAG (PROPORTION + 0x80000000), v);
+    return __builtin_ia32_pmovmskb128 (b);
 }
 
-static inline value RIGHT (value a, unsigned count)
+static INLINE bool TESTTEST (int m, int index)
 {
-    return __builtin_ia32_psrld (a, count);
+    return m & (1 << (index * 4));
 }
 
-static inline value ROTATE_LEFT (value a, unsigned count)
+
+static INLINE uint32_t EXTRACTi (value_t v, int index)
 {
-    return OR (LEFT (a, count), RIGHT (a, 32 - count));
+    switch (index) {
+    case 0:
+        return FIRST (v);
+    case 1:
+        return FIRST (__builtin_ia32_pshufd (v, 0x55));
+    case 2:
+        return FIRST (__builtin_ia32_pshufd (v, 0xAA));
+    case 3:
+        return FIRST (__builtin_ia32_pshufd (v, 0xFF));
+    default:
+        abort();
+    }
 }
 
-static inline value IF (value a, value b, value c)
+
+static INLINE value_t INSERTi (value_t v, int index, uint32_t vv)
 {
-    return OR (AND (a, b), ANDN(a, c));
+    value_t mask;
+    value_t ins;
+
+    switch (index) {
+    case 0:
+        mask = (value_t) { 0, -1, -1, -1 };
+        ins = (value_t) { vv, 0, 0, 0 };
+        break;
+    case 1:
+        mask = (value_t) { -1, 0, -1, -1 };
+        ins = (value_t) { 0, vv, 0, 0 };
+        break;
+    case 2:
+        mask = (value_t) { -1, -1, 0, -1 };
+        ins = (value_t) { 0, 0, vv, 0 };
+        break;
+    case 3:
+        mask = (value_t) { -1, -1, -1, 0 };
+        ins = (value_t) { 0, 0, 0, vv };
+        break;
+    default:
+        abort();
+    }
+    return (v & mask) | ins;
 }
 
-#define GREATER_THAN(a, b) __builtin_ia32_pcmpgtd ((a), (b))
-    
-#elif
+
+
+static INLINE void BYTE_INTERLEAVE (value_t * lo, value_t * hi)
+{
+#define BIDEBUG NODEBUG
+    BIDEBUG ("I0: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
+             SWAP (EXTRACTi (*lo, 0)),
+             SWAP (EXTRACTi (*lo, 1)),
+             SWAP (EXTRACTi (*lo, 2)),
+             SWAP (EXTRACTi (*lo, 3)),
+             SWAP (EXTRACTi (*hi, 0)),
+             SWAP (EXTRACTi (*hi, 1)),
+             SWAP (EXTRACTi (*hi, 2)),
+             SWAP (EXTRACTi (*hi, 3)));
+
+    // lo 8 bytes interleaved into 16 bytes.
+    value_t lo1 = __builtin_ia32_punpcklbw128 (*lo, *hi);
+    // hi 8 bytes interleaved into 16 bytes.
+    value_t hi1 = __builtin_ia32_punpckhbw128 (*lo, *hi);
+
+    BIDEBUG ("I1: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
+             SWAP (EXTRACTi (lo1, 0)),
+             SWAP (EXTRACTi (lo1, 1)),
+             SWAP (EXTRACTi (lo1, 2)),
+             SWAP (EXTRACTi (lo1, 3)),
+             SWAP (EXTRACTi (hi1, 0)),
+             SWAP (EXTRACTi (hi1, 1)),
+             SWAP (EXTRACTi (hi1, 2)),
+             SWAP (EXTRACTi (hi1, 3)));
+
+    // We now have the correct 32-bit words, only in the wrong positions.
+    // Each 32 bit value has been expanded to 64, so we want
+    // lo.0 = lo1.0, hi.0 = lo1.1,
+    // lo.1 = lo1.2, hi.1 = lo1.3,
+    // lo.2 = hi1.0, hi.2 = hi1.1,
+    // lo.3 = hi1.2, lo.3 = hi1.3
+    // If we swap the middle pair of 32 bits in each of lo1 and lo2, then we
+    // only need to shuffle around 64 bit quantities:
+    value_t lo2 = __builtin_ia32_pshufd (lo1, 0xd8);
+    value_t hi2 = __builtin_ia32_pshufd (hi1, 0xd8);
+
+    BIDEBUG ("I2: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
+             SWAP (EXTRACTi (lo2, 0)),
+             SWAP (EXTRACTi (lo2, 1)),
+             SWAP (EXTRACTi (lo2, 2)),
+             SWAP (EXTRACTi (lo2, 3)),
+             SWAP (EXTRACTi (hi2, 0)),
+             SWAP (EXTRACTi (hi2, 1)),
+             SWAP (EXTRACTi (hi2, 2)),
+             SWAP (EXTRACTi (hi2, 3)));
+
+    // Now we want
+    // lo.0 = lo2.0, hi.0 = lo2.2,
+    // lo.1 = lo2.1, hi.1 = lo2.3,
+    // lo.2 = hi2.0, hi.2 = hi2.2,
+    // lo.3 = hi2.1, lo.3 = hi2.3
+    *lo = __builtin_ia32_punpcklqdq128 (lo2, hi2);
+    *hi = __builtin_ia32_punpckhqdq128 (lo2, hi2);
+
+    BIDEBUG ("I3: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
+             SWAP (EXTRACTi (*lo, 0)),
+             SWAP (EXTRACTi (*lo, 1)),
+             SWAP (EXTRACTi (*lo, 2)),
+             SWAP (EXTRACTi (*lo, 3)),
+             SWAP (EXTRACTi (*hi, 0)),
+             SWAP (EXTRACTi (*hi, 1)),
+             SWAP (EXTRACTi (*hi, 2)),
+             SWAP (EXTRACTi (*hi, 3)));
+}
+
+// Convert a collection of nibbles to ASCII values.
+static INLINE value_t ASCIIFY (value_t nibbles)
+{
+    value_t adjust = ((value_t) __builtin_ia32_pcmpgtb128 (
+                          nibbles, DIAG (0x09090909)))
+        & DIAG (0x27272727);
+    value_t result = __builtin_ia32_paddb128 (nibbles, DIAG (0x30303030));
+    return result + adjust;
+}
+
+static INLINE value_t LOW_NIBBLE (value_t w)
+{
+    return w & DIAG (0x0f0f0f0f);
+}
+
+static INLINE value_t HIGH_NIBBLE (value_t w)
+{
+    return RIGHT(w, 4) & DIAG (0x0f0f0f0f);
+}
+
+static INLINE void EXPAND (value_t v, value_t * V0, value_t * V1)
+{
+    *V0 = HIGH_NIBBLE (v);
+    *V1 = LOW_NIBBLE (v);
+    BYTE_INTERLEAVE (V0, V1);
+    *V0 = ASCIIFY (*V0);
+    *V1 = ASCIIFY (*V1);
+
+    NODEBUG ("Expand: %08x %08x %08x %08x\n"
+             "        %08x %08x %08x %08x\n"
+             "        %08x %08x %08x %08x\n",
+             SWAP (EXTRACTi (v, 0)),
+             SWAP (EXTRACTi (v, 1)),
+             SWAP (EXTRACTi (v, 2)),
+             SWAP (EXTRACTi (v, 3)),
+
+             SWAP (EXTRACTi (*V0, 0)),
+             SWAP (EXTRACTi (*V0, 1)),
+             SWAP (EXTRACTi (*V0, 2)),
+             SWAP (EXTRACTi (*V0, 3)),
+
+             SWAP (EXTRACTi (*V1, 0)),
+             SWAP (EXTRACTi (*V1, 1)),
+             SWAP (EXTRACTi (*V1, 2)),
+             SWAP (EXTRACTi (*V1, 3)));
+}
+
+
+#else
 
 #error Huh
 
 #endif
 
-static inline value hexc (value n)
+#ifndef ANDN
+#define ANDN(a,b) (~(a) & (b))
+#endif
+#ifndef AND
+#define AND(a,b)  ((a) & (b))
+#endif
+#ifndef NOT
+#define NOT(a)    (~(a))
+#endif
+#ifndef OR
+#define OR(a,b)   ((a) | (b))
+#endif
+#ifndef XOR
+#define XOR(a,b)  ((a) ^ (b))
+#endif
+#ifndef ADD
+#define ADD(a,b)  ((a) + (b))
+#endif
+#ifndef SUB
+#define SUB(a,b)  ((a) - (b))
+#endif
+#ifndef LEFT
+static INLINE value_t LEFT (value_t a, int count) { return a << count; }
+#endif
+#ifndef RIGHT
+static INLINE value_t RIGHT (value_t a, int count) { return a >> count; }
+#endif
+#ifndef ROTATE_LEFT
+static INLINE value_t ROTATE_LEFT (value_t a, unsigned count)
 {
-    return IF (GREATER_THAN (n, DIAG(9)),
-	       ADD (n, DIAG ('a' - 10)),
-	       ADD (n, DIAG ('0')));
+    return OR (LEFT (a, count), RIGHT (a, 32 - count));
 }
 
-static inline value byte (int n, const unsigned char in[STORE])
+
+static uint32_t EXTRACTo (value_t v, int index)
 {
-    if (n < STORE * 2)
-	/* Bytes are big endian...  */
-	if ((n & 1) == 0)
-	    return hexc (RIGHT (DIAG (in[n / 2]), 4));
-	else
-	    return hexc (AND (DIAG (in[n / 2]), DIAG (15)));
-    else if (n == STORE * 2)
-	return DIAG ('\n');
-    else if (n == STORE * 2 + 1)
-	return DIAG (128);
+    return EXTRACTi (v, index);
+}
+
+static INLINE uint32_t EXTRACT (value_t v, int index)
+{
+    if (__builtin_constant_p (index))
+        return EXTRACTi (v, index);
     else
-	return DIAG (0);
+        return EXTRACTo (v, index);
 }
 
-static inline value word (int n, const unsigned char in[STORE])
+
+static value_t INSERTo (value_t v, int index, uint32_t vv)
 {
-    n *= 4;
-    return ADD (ADD (byte (n, in),
-		     LEFT (byte (n + 1, in), 8)),
-		ADD (LEFT (byte (n + 2, in), 16),
-		     LEFT (byte (n + 3, in), 24)));
+    return INSERTi (v, index, vv);
+}
+
+static INLINE value_t INSERT (value_t v, int index, uint32_t vv)
+{
+    if (__builtin_constant_p (index))
+        return INSERTi (v, index, vv);
+    else
+        return INSERTo (v, index, vv);
+}
+
+#endif
+
+static INLINE value_t TRIM (value_t a, unsigned index)
+{
+    index *= 32;
+    if (index + 32 <= BITS) {
+//        DEBUG ("%u - all\n", index);
+        return a;
+    }
+    if (index >= BITS) {
+//        DEBUG ("%u - none\n", index);
+        return DIAG (0);
+    }
+//    DEBUG ("%u...", index);
+    index = BITS - index;
+//    DEBUG ("%u...", index);
+    unsigned mask = 0xffffffff << (32 - index);
+//    DEBUG ("%08x\n", mask);
+
+    return AND (a, DIAG (SWAP (mask)));
 }
 
 /* Bits to shift left at various stages.  */
@@ -201,52 +387,73 @@ static inline value word (int n, const unsigned char in[STORE])
 
 /* Generate md5 hash, storing the first 'whole' complete bytes and
  * masking the next byte by 'mask'.  Gets specialised to what we want.  */
-static inline void do_MD5 (unsigned char * out, int whole, int mask,
-			   const unsigned char in[STORE])
+static void INLINE inline_MD5 (value_t * __restrict D0,
+                               value_t * __restrict D1,
+                               value_t * __restrict D2)
 {
-    const value init0 = DIAG (0x67452301);
-    const value init1 = DIAG (0xefcdab89);
-    const value init2 = DIAG (0x98badcfe);
-    const value init3 = DIAG (0x10325476);
+    const value_t init0 = DIAG (0x67452301);
+    const value_t init1 = DIAG (0xefcdab89);
+    const value_t init2 = DIAG (0x98badcfe);
+    const value_t init3 = DIAG (0x10325476);
 
-    value a = init0;
-    value b = init1;
-    value c = init2;
-    value d = init3;
+    value_t a = init0;
+    value_t b = init1;
+    value_t c = init2;
+    value_t d = init3;
 
     /* Round 1 */
-    const value xx00 = word (0, in);
+    SPLIT (*D0, xx00, xx01);
     FF (a, b, c, d, xx00, S11, 0xd76aa478); /* 1 */
-    const value xx01 = word (1, in);
     FF (d, a, b, c, xx01, S12, 0xe8c7b756); /* 2 */
-    const value xx02 = word (2, in);
+
+    SPLIT (*D1, xx02, xx03);
     FF (c, d, a, b, xx02, S13, 0x242070db); /* 3 */
-    const value xx03 = word (3, in);
     FF (b, c, d, a, xx03, S14, 0xc1bdceee); /* 4 */
-    const value xx04 = word (4, in);
+
+    SPLIT (*D2, xx04, xx05);
     FF (a, b, c, d, xx04, S11, 0xf57c0faf); /* 5 */
-    const value xx05 = word (5, in);
     FF (d, a, b, c, xx05, S12, 0x4787c62a); /* 6 */
-    const value xx06 = word (6, in);
+
+    MD5DEBUG ("Input is %08x %08x %08x\n",
+              SWAP (FIRST (*D0)), SWAP (FIRST (*D1)), SWAP (FIRST (*D2)));
+
+    const value_t xx06 = DIAG (0x80);
     FF (c, d, a, b, xx06, S13, 0xa8304613); /* 7 */
-    const value xx07 = word (7, in);
+
+    const value_t xx07 = DIAG (0);
     FF (b, c, d, a, xx07, S14, 0xfd469501); /* 8 */
-    const value xx08 = word (8, in);
+
+    const value_t xx08 = DIAG (0);
     FF (a, b, c, d, xx08, S11, 0x698098d8); /* 9 */
-    const value xx09 = word (9, in);
+
+    const value_t xx09 = DIAG (0);
     FF (d, a, b, c, xx09, S12, 0x8b44f7af); /* 10 */
-    const value xx10 = word (10, in);
+
+    const value_t xx10 = DIAG (0);
     FF (c, d, a, b, xx10, S13, 0xffff5bb1); /* 11 */
-    const value xx11 = word (11, in);
+
+    const value_t xx11 = DIAG (0);
     FF (b, c, d, a, xx11, S14, 0x895cd7be); /* 12 */
-    const value xx12 = word (12, in);
+
+    const value_t xx12 = DIAG (0);
     FF (a, b, c, d, xx12, S11, 0x6b901122); /* 13 */
-    const value xx13 = word (13, in);
+
+    const value_t xx13 = DIAG (0);
     FF (d, a, b, c, xx13, S12, 0xfd987193); /* 14 */
-    const value xx14 = DIAG (STORE * 16 + 8); /* Account for hex expansion.  */
+
+    const value_t xx14 = DIAG (3 * 32 * 2);
     FF (c, d, a, b, xx14, S13, 0xa679438e); /* 15 */
-    const value xx15 = DIAG (0);
+
+    const value_t xx15 = DIAG (0);
     FF (b, c, d, a, xx15, S14, 0x49b40821); /* 16 */
+
+    MD5DEBUG ("BLOCK IS is \n"
+              "  %08x %08x %08x %08x %08x %08x %08x %08x\n"
+              "  %08x %08x %08x %08x %08x %08x %08x %08x\n",
+              FIRST (xx00), FIRST (xx01), FIRST (xx02), FIRST (xx03),
+              FIRST (xx04), FIRST (xx05), FIRST (xx06), FIRST (xx07),
+              FIRST (xx08), FIRST (xx09), FIRST (xx10), FIRST (xx11),
+              FIRST (xx12), FIRST (xx13), FIRST (xx14), FIRST (xx15));
 
     /* Round 2 */
     GG (a, b, c, d, xx01, S21, 0xf61e2562); /* 17 */
@@ -307,229 +514,251 @@ static inline void do_MD5 (unsigned char * out, int whole, int mask,
     c = ADD (c, init2);
     d = ADD (d, init3);
 
-    /* n, whole and mask are always constants, so the expressions
-     * below constant fold down to a shift and mask.  */
-#define SAVE_SELECT(n) FIRST (n < 4 ? a : (n < 8 ? b : (n < 12 ? c : d)))
-#define SAVE_BYTE(n) ((SAVE_SELECT(n) >> (8 * (n & 3))) & 255)
-#define SAVE(n) (n < whole ? out[n] = SAVE_BYTE(n) : ((mask && n == whole) ? out[n] = SAVE_BYTE(n) & MASK : 0))
-    SAVE(0);
-    SAVE(1);
-    SAVE(2);
-    SAVE(3);
-    SAVE(4);
-    SAVE(5);
-    SAVE(6);
-    SAVE(7);
-    SAVE(8);
-    SAVE(9);
-    SAVE(10);
-    SAVE(11);
-    SAVE(12);
-    SAVE(13);
-    SAVE(14);
-    SAVE(15);
+    *D0 = TRIM (a, 0);
+    *D1 = TRIM (b, 1);
+    *D2 = TRIM (c, 2);
+
+    MD5DEBUG ("Result is %08x %08x %08x\n",
+              SWAP (FIRST (*D0)), SWAP (FIRST (*D1)), SWAP (FIRST (*D2)));
 }
 
-static void md5_short (unsigned char out[STORE], const unsigned char in[STORE])
+
+static void outline_MD5 (value_t * v)
 {
-    do_MD5 (out, WHOLE, MASK, in);
+    inline_MD5 (v, v + 1, v + 2);
 }
 
-static void md5_long (unsigned char out[16], const unsigned char in[STORE])
+
+static int loop_MD5 (value_t * __restrict__ v,
+                     uint64_t * __restrict__ iterations)
 {
-    do_MD5 (out, 16, 0, in);
+    value_t A = v[0];
+    value_t B = v[1];
+    value_t C = v[2];
+    int t;
+
+    do {
+        inline_MD5 (&A, &B, &C);
+        ++*iterations;
+        t = TEST (A);
+        if (t == 0) {
+            int32_t x = FIRST (A);
+            int32_t l = 0x80000000 | PROPORTION;
+            assert (l <= x);
+        }
+    }
+    while (__builtin_expect (t == 0, 1));
+    v[0] = A;
+    v[1] = B;
+    v[2] = C;
+    return t;
 }
 
-typedef struct Item
-{
-    int start;
-    int count;
-    unsigned char out[STORE];
-} Item;
 
-static void prep (unsigned char * p, int start)
+static uint64_t work_block;
+
+// (Re)initialise slice given by index.
+static void recharge (value_t * v,
+                      uint64_t * blocks,
+                      uint64_t * starts,
+                      uint64_t iteration,
+                      int index)
 {
-    memset (p, 0, STORE);
-    for (; start; start >>= 8)
-	*p++ = start & 255;
+    uint64_t block = ++work_block;
+    v[0] = INSERT (v[0], index, block);
+    v[1] = INSERT (v[1], index, block >> 32);
+    v[2] = INSERT (v[2], index, 0);
+
+    blocks[index] = block;
+    starts[index] = iteration;
 }
 
-/* Do a unit of work.  Iterate md5 ITERATE times, starting from start.
- * Keep the KEEP smallest hash results, returning them in U.  */
-static void unit (Item U[KEEP], int start)
+
+typedef struct record_t {
+    uint32_t h[3];
+    uint64_t block;
+    uint64_t iterations;
+    struct record_t * next;
+} record_t;
+
+static uint64_t recorded_iterations;
+
+#define TABLE_SIZE 4095
+static record_t * record_table[TABLE_SIZE];
+
+
+static void collision (const record_t * A,
+                       const record_t * B)
 {
-    unsigned char current[STORE];
-    prep (current, start);
+    printf ("Collide after %lu recorded iterations:\n"
+            " %08x %08x ->%11lu -> %08x %08x %08x\n"
+            " %08x %08x ->%11lu -> %08x %08x %08x\n",
+            recorded_iterations,
+            SWAP (A->block), SWAP (A->block >> 32), A->iterations,
+            SWAP (A->h[0]),  SWAP (A->h[1]), SWAP (A->h[2]),
+            SWAP (B->block), SWAP (B->block >> 32), B->iterations,
+            SWAP (B->h[0]),  SWAP (B->h[1]), SWAP (B->h[2]));
 
-    for (int i = 0; i != KEEP; ++i)
-	memset (U[i].out, 0xff, STORE);
+    if (A->iterations < B->iterations) {
+        const record_t * C = A;
+        A = B;
+        B = C;
+    }
 
-    for (int count = 1; count != ITERATE + 1; ++count) {
-	md5_short (current, current);
+    value_t V[3];
+    V[0] = DIAG (A->block);
+    V[1] = DIAG (A->block >> 32);
+    V[2] = DIAG (A->h[2]);
 
-	/* Quick case, don't keep.  */
-	if (__builtin_expect (current[0] != 0, 1))
-	    continue;
+    if (A->iterations > B->iterations) {
+        value_t P[3];
+        for (uint64_t i = B->iterations; i != A->iterations; ++i) {
+            P[0] = V[0];
+            P[1] = V[1];
+            P[2] = V[2];
+            outline_MD5 (V);
+        }
+        if (FIRST (V[0]) == (B->block & 0xffffffff) &&
+            FIRST (V[1]) == (B->block >> 32) &&
+            FIRST (V[2]) == 0) {
+            printf (
+                "Preimage: %08x %08x %08x -> %08x %08x %08x\n",
+                SWAP (FIRST (P[0])), SWAP (FIRST (P[1])), SWAP (FIRST (P[2])),
+                SWAP (FIRST (V[0])), SWAP (FIRST (V[1])), SWAP (FIRST (V[2])));
+            return;
+        }
+    }
 
-	if (memcmp (current, U[0].out, STORE) > 0)
-	    continue;
+    V[0] = INSERT (V[0], 1, B->block);
+    V[1] = INSERT (V[1], 1, B->block >> 32);
+    V[2] = INSERT (V[2], 1, 0);
 
-	/* Put this item into the unit array, keeping in decreasing
-	 * order of hash.  */
-	int p;
-	for (p = 0; p != KEEP - 1; ++p) {
-	    if (memcmp (current, U[p+1].out, STORE) > 0)
-		break;		/* Not at p+1.  */
-	    U[p] = U[p+1];
-	}
-	/* Put into position p.  */
-	U[p].start = start;
-	U[p].count = count;
-	memcpy (U[p].out, current, STORE);
+    assert (EXTRACT (V[0], 0) != EXTRACT (V[0], 1) ||
+            EXTRACT (V[1], 0) != EXTRACT (V[1], 1) ||
+            EXTRACT (V[2], 0) != EXTRACT (V[2], 1));
+
+    for (uint64_t i = 0; i != B->iterations; ++i) {
+        value_t P[3];
+        P[0] = V[0];
+        P[1] = V[1];
+        P[2] = V[2];
+        outline_MD5 (V);
+        if (EXTRACT (V[0], 0) == EXTRACT (V[0], 1) &&
+            EXTRACT (V[1], 0) == EXTRACT (V[1], 1) &&
+            EXTRACT (V[2], 0) == EXTRACT (V[2], 1)) {
+            printf ("Collide:\n"
+                    "  %0x8 %08x %08x -> %08x %08x %08x\n"
+                    "  %0x8 %08x %08x -> %08x %08x %08x\n",
+                    SWAP (EXTRACT (P[0], 0)),
+                    SWAP (EXTRACT (P[1], 0)),
+                    SWAP (EXTRACT (P[2], 0)),
+                    SWAP (EXTRACT (V[0], 0)),
+                    SWAP (EXTRACT (V[1], 0)),
+                    SWAP (EXTRACT (V[2], 0)),
+                    SWAP (EXTRACT (P[0], 1)),
+                    SWAP (EXTRACT (P[1], 1)),
+                    SWAP (EXTRACT (P[2], 1)),
+                    SWAP (EXTRACT (V[0], 1)),
+                    SWAP (EXTRACT (V[1], 1)),
+                    SWAP (EXTRACT (V[2], 1)));
+            exit (EXIT_SUCCESS);
+        }
+    }
+
+    printf ("Huh?  %0x8 %08x %08x   %08x %08x %08x\n",
+            SWAP (EXTRACT (V[0], 0)),
+            SWAP (EXTRACT (V[1], 0)),
+            SWAP (EXTRACT (V[2], 0)),
+            SWAP (EXTRACT (V[0], 1)),
+            SWAP (EXTRACT (V[1], 1)),
+            SWAP (EXTRACT (V[2], 1)));
+    fflush (NULL);
+    abort();
+}
+
+
+static void store (value_t * v,
+                   uint64_t * blocks,
+                   uint64_t * starts,
+                   uint64_t iteration,
+                   int index)
+{
+    record_t * record = malloc (sizeof (record_t));
+    record->h[0] = EXTRACT (v[0], index);
+    record->h[1] = EXTRACT (v[1], index);
+    record->h[2] = EXTRACT (v[2], index);
+    record->block = blocks[index];
+    record->iterations = iteration - starts[index];
+    recorded_iterations += record->iterations;
+
+    printf ("Store: %08x %08x - %lu - %08x %08x %08x [%lu]\n",
+            SWAP (record->block), SWAP (record->block >> 32),
+            record->iterations,
+            SWAP (record->h[0]), SWAP (record->h[1]), SWAP (record->h[2]),
+            recorded_iterations);
+
+    uint32_t hash = record->h[0] ^ record->h[1] ^ record->h[2];
+    hash %= TABLE_SIZE;
+
+    for (const record_t * p = record_table[hash]; p; p = p->next)
+        if (p->h[1] == record->h[1] &&
+            p->h[0] == record->h[0] &&
+            p->h[2] == record->h[2])
+            collision (p, record);
+
+    record->next = record_table[hash];
+    record_table[hash] = record;
+}
+
+//static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void main_loop (void)
+{
+    value_t V[3];
+    V[0] = V[1] = V[2] = DIAG (0);
+    uint64_t blocks[WIDTH];
+    uint64_t starts[WIDTH];
+    uint64_t iteration = 0;
+
+    for (int i = 0; i != WIDTH; ++i)
+        recharge (V, blocks, starts, iteration, i);
+
+    while (true) {
+        int t = loop_MD5 (V, &iteration);
+
+        int done = 0;
+        for (int i = 0; i != WIDTH; ++i)
+            if (TESTTEST (t, i)) {
+                ++done;
+                store (V, blocks, starts, iteration, i);
+                recharge (V, blocks, starts, iteration, i);
+            }
+        assert (done);
     }
 }
 
-/* Print a block of bytes in hex.  */
-static void print_bytes (FILE * f, const unsigned char * p, int n)
-{
-    for (int i = 0; i != n; ++i)
-	fprintf (f, "%02x", p[i]);
-}
-
-/* Do the catch up iteration for extracting the final collision.
- * Returns false if this turns out to be a pre-image, true if it's OK.  */
-static bool adjustment (unsigned char buf[STORE], int count,
-			const unsigned char other[STORE])
-{
-    if (count <= 0)
-	return true;
-
-    unsigned char pre[STORE];
-    memcpy (pre, buf, STORE);
-
-    while (--count)		/* Loop does all but one iteration.  */
-	md5_short (pre, pre);
-
-    md5_short (buf, pre);
-    if (memcmp (buf, other, STORE) != 0)
-	return true;
-
-    /* We have a pre-image not a collision.  Report it.  */
-    unsigned char hash[16];
-    md5_long (hash, pre);
-
-    printf ("Preimage:\n");
-    print_bytes (stdout, pre, STORE);
-    printf ("\t");
-    print_bytes (stdout, other, STORE);
-    printf ("\t");
-    print_bytes (stdout, hash, 16);
-    printf ("\n");
-
-    return false;
-}
-
-/* Produce a report on the collision.  Return false if it's actually a
- * preimage, true if it's OK.  */
-static bool report (int startA, int countA, int startB, int countB)
-{
-    unsigned char A0[STORE];
-    unsigned char B0[STORE];
-    unsigned char A1[STORE];
-    unsigned char B1[STORE];
-    /* Search for the actual collision.  */
-    prep (A0, startA);
-    prep (B0, startB);
-    /* ... adjust the starting points for the search, checking for a
-     * pre-image.  */
-    if (!adjustment (B0, countB - countA, A0))
-	return false;
-    if (!adjustment (A0, countA - countB, B0))
-	return false;
-
-    /* Now search, iterating both items together.  */
-    while (1) {
-	md5_short (A1, A0);
-	md5_short (B1, B0);
-	if (memcmp (A1, B1, STORE) == 0)
-	    goto in_zero;
-	md5_short (A0, A1);
-	md5_short (B0, B1);
-	if (memcmp (A0, B0, STORE) == 0)
-	    break;
-    }
-    memcpy (A0, A1, STORE);
-    memcpy (B0, B1, STORE);
-
-in_zero:
-    ;
-    /* Print it out.  */
-    unsigned char hashA[16];
-    unsigned char hashB[16];
-    md5_long (hashA, A0);
-    md5_long (hashB, B0);
-
-    print_bytes (stdout, A0, STORE);
-    printf ("\t");
-    print_bytes (stdout, hashA, 16);
-    printf ("\n");
-
-    print_bytes (stdout, B0, STORE);
-    printf ("\t");
-    print_bytes (stdout, hashB, 16);
-    printf ("\n");
-
-    int n;
-    for (n = 0; n < 128; ++n)
-	if ((hashA[n / 8] ^ hashB[n / 8]) & (128 >> (n & 7)))
-	    break;
-    printf ("\t%i bits of collision.\n", n);
-
-    FILE * p = popen ("md5sum", "w");
-    if (p) {
-	print_bytes (p, A0, STORE);
-	fprintf (p, "\n");
-	fclose (p);
-    }
-    p = popen ("md5sum", "w");
-    if (p) {
-	print_bytes (p, B0, STORE);
-	fprintf (p, "\n");
-	fclose (p);
-    }
-
-    return true;
-}    
 
 int main()
 {
-    Item * items = NULL;
+    value_t v = DIAG (0);
 
-    for (int n = 0;; ++n)
-    {
-	items = realloc (items, (n + 1) * KEEP * sizeof (Item));
-	if (items == NULL) {
-	    fprintf (stderr, "brute: malloc failed\n");
-	    exit (1);
-	}
-	unit (&items[n * KEEP], n);
-	printf ("Unit %i\n", n);
-	/* Putting the items in a hash would be quicker...  But this
-	 * shouldn't be speed critical anyway.  */
-	for (int i = n * KEEP; i != (n + 1) * KEEP; ++i) {
-	    if (items[i].out[0] == 255)
-		continue;	/* Unlikely unless ITERATE is too small.  */
-	    for (int j = 0; j != i; ++j)
-		if (memcmp (items[i].out, items[j].out, STORE) == 0) {
-		    printf ("%i\t%i\n%i\t%i\t",
-			    items[i].start, items[i].count,
-			    items[j].start, items[j].count);
-		    print_bytes (stdout, items[i].out, STORE);
-		    printf ("\n");
-		    if (report (items[i].start, items[i].count,
-				items[j].start, items[j].count))
-			exit (0);
-		}
-	}
-    }
+
+    uint32_t v0 = 0xdeadbeaf;
+    uint32_t v1 = 0xcae3159a;
+    uint32_t v2 = 0x12345678;
+    uint32_t v3 = 0xabcdef09;
+
+    v = INSERT (v, 0, v0);
+    v = INSERT (v, 1, v1);
+    v = INSERT (v, 2, v2);
+    v = INSERT (v, 3, v3);
+
+    assert (v0 == EXTRACT (v, 0));
+    assert (v1 == EXTRACT (v, 1));
+    assert (v2 == EXTRACT (v, 2));
+    assert (v3 == EXTRACT (v, 3));
+
+    printf ("Enter main loop...\n");
+
+    main_loop();
 }

@@ -1,7 +1,7 @@
 
 include ../Rules.mk
 
-CFLAGS += -g3 -Winline -fomit-frame-pointer -mtune=i686 -march=i686 -mmmx
+CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64 -Wall -Winline -Werror -std=gnu99 -fomit-frame-pointer
 
 all: brute
 
