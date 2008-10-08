@@ -5,7 +5,7 @@ CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64
 
 all: brute
 
-brute: brute.o
+brute: brute.o -lpthread
 #brute LIBS = -lcrypto
 
 brute3.c: brute.c

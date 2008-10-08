@@ -14,6 +14,7 @@
  */
 
 #include <assert.h>
+#include <pthread.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,10 +30,10 @@ static inline uint32_t SWAP (uint32_t a)
 /* Bits of hash to take.  The hash function we compute collisions for
  * is the first BITS bits of the md5 value.  The program will require
  * around 1<<(BITS/2) md5 operations.  */
-#define BITS 56
+#define BITS 80
 
 /* Proportion out of 1<<32 of results to take.  */
-#define PROPORTION 4096
+#define PROPORTION 16
 
 /* When we say inline we mean it --- we're relying heavily on constant
  * folding functions such as word() below.  */
@@ -40,8 +41,6 @@ static inline uint32_t SWAP (uint32_t a)
 
 #define DEBUG(...) fprintf (stderr, __VA_ARGS__)
 #define NODEBUG(...) while (0) fprintf (stderr, __VA_ARGS__)
-
-#define MD5DEBUG NODEBUG
 
 /************************* MMX stuff.  **************************/
 
@@ -324,20 +323,21 @@ static INLINE value_t INSERT (value_t v, int index, uint32_t vv)
 
 static INLINE value_t TRIM (value_t a, unsigned index)
 {
+#define TRDEBUG NODEBUG
     index *= 32;
     if (index + 32 <= BITS) {
-//        DEBUG ("%u - all\n", index);
+        TRDEBUG ("%u - all\n", index);
         return a;
     }
     if (index >= BITS) {
-//        DEBUG ("%u - none\n", index);
+        TRDEBUG ("%u - none\n", index);
         return DIAG (0);
     }
-//    DEBUG ("%u...", index);
+    TRDEBUG ("%u...", index);
     index = BITS - index;
-//    DEBUG ("%u...", index);
+    TRDEBUG ("%u...", index);
     unsigned mask = 0xffffffff << (32 - index);
-//    DEBUG ("%08x\n", mask);
+    TRDEBUG ("%08x\n", mask);
 
     return AND (a, DIAG (SWAP (mask)));
 }
@@ -391,6 +391,10 @@ static void INLINE inline_MD5 (value_t * __restrict D0,
                                value_t * __restrict D1,
                                value_t * __restrict D2)
 {
+#define MD5DEBUG NODEBUG
+    MD5DEBUG ("Input is %08x %08x %08x\n",
+              SWAP (FIRST (*D0)), SWAP (FIRST (*D1)), SWAP (FIRST (*D2)));
+
     const value_t init0 = DIAG (0x67452301);
     const value_t init1 = DIAG (0xefcdab89);
     const value_t init2 = DIAG (0x98badcfe);
@@ -413,9 +417,6 @@ static void INLINE inline_MD5 (value_t * __restrict D0,
     SPLIT (*D2, xx04, xx05);
     FF (a, b, c, d, xx04, S11, 0xf57c0faf); /* 5 */
     FF (d, a, b, c, xx05, S12, 0x4787c62a); /* 6 */
-
-    MD5DEBUG ("Input is %08x %08x %08x\n",
-              SWAP (FIRST (*D0)), SWAP (FIRST (*D1)), SWAP (FIRST (*D2)));
 
     const value_t xx06 = DIAG (0x80);
     FF (c, d, a, b, xx06, S13, 0xa8304613); /* 7 */
@@ -541,11 +542,6 @@ static int loop_MD5 (value_t * __restrict__ v,
         inline_MD5 (&A, &B, &C);
         ++*iterations;
         t = TEST (A);
-        if (t == 0) {
-            int32_t x = FIRST (A);
-            int32_t l = 0x80000000 | PROPORTION;
-            assert (l <= x);
-        }
     }
     while (__builtin_expect (t == 0, 1));
     v[0] = A;
@@ -555,7 +551,8 @@ static int loop_MD5 (value_t * __restrict__ v,
 }
 
 
-static uint64_t work_block;
+static uint64_t work_block = 1;
+static uint64_t work_step = 1;
 
 // (Re)initialise slice given by index.
 static void recharge (value_t * v,
@@ -564,7 +561,8 @@ static void recharge (value_t * v,
                       uint64_t iteration,
                       int index)
 {
-    uint64_t block = ++work_block;
+    uint64_t block = work_block;
+    work_block += work_step;
     v[0] = INSERT (v[0], index, block);
     v[1] = INSERT (v[1], index, block >> 32);
     v[2] = INSERT (v[2], index, 0);
@@ -598,6 +596,7 @@ static void collision (const record_t * A,
             SWAP (A->h[0]),  SWAP (A->h[1]), SWAP (A->h[2]),
             SWAP (B->block), SWAP (B->block >> 32), B->iterations,
             SWAP (B->h[0]),  SWAP (B->h[1]), SWAP (B->h[2]));
+    fflush (NULL);
 
     if (A->iterations < B->iterations) {
         const record_t * C = A;
@@ -608,7 +607,7 @@ static void collision (const record_t * A,
     value_t V[3];
     V[0] = DIAG (A->block);
     V[1] = DIAG (A->block >> 32);
-    V[2] = DIAG (A->h[2]);
+    V[2] = DIAG (0);
 
     if (A->iterations > B->iterations) {
         value_t P[3];
@@ -625,6 +624,7 @@ static void collision (const record_t * A,
                 "Preimage: %08x %08x %08x -> %08x %08x %08x\n",
                 SWAP (FIRST (P[0])), SWAP (FIRST (P[1])), SWAP (FIRST (P[2])),
                 SWAP (FIRST (V[0])), SWAP (FIRST (V[1])), SWAP (FIRST (V[2])));
+            fflush (NULL);
             return;
         }
     }
@@ -647,8 +647,8 @@ static void collision (const record_t * A,
             EXTRACT (V[1], 0) == EXTRACT (V[1], 1) &&
             EXTRACT (V[2], 0) == EXTRACT (V[2], 1)) {
             printf ("Collide:\n"
-                    "  %0x8 %08x %08x -> %08x %08x %08x\n"
-                    "  %0x8 %08x %08x -> %08x %08x %08x\n",
+                    "  %08x %08x %08x -> %08x %08x %08x\n"
+                    "  %08x %08x %08x -> %08x %08x %08x\n",
                     SWAP (EXTRACT (P[0], 0)),
                     SWAP (EXTRACT (P[1], 0)),
                     SWAP (EXTRACT (P[2], 0)),
@@ -661,6 +661,7 @@ static void collision (const record_t * A,
                     SWAP (EXTRACT (V[0], 1)),
                     SWAP (EXTRACT (V[1], 1)),
                     SWAP (EXTRACT (V[2], 1)));
+            fflush (NULL);
             exit (EXIT_SUCCESS);
         }
     }
@@ -691,11 +692,12 @@ static void store (value_t * v,
     record->iterations = iteration - starts[index];
     recorded_iterations += record->iterations;
 
-    printf ("Store: %08x %08x - %lu - %08x %08x %08x [%lu]\n",
+    printf ("S: %08x %08x -%11lu - %08x %08x %08x [%lu]\n",
             SWAP (record->block), SWAP (record->block >> 32),
             record->iterations,
             SWAP (record->h[0]), SWAP (record->h[1]), SWAP (record->h[2]),
             recorded_iterations);
+    fflush (NULL);
 
     uint32_t hash = record->h[0] ^ record->h[1] ^ record->h[2];
     hash %= TABLE_SIZE;
@@ -710,9 +712,9 @@ static void store (value_t * v,
     record_table[hash] = record;
 }
 
-//static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-static void main_loop (void)
+static void * main_loop (void * ignore)
 {
     value_t V[3];
     V[0] = V[1] = V[2] = DIAG (0);
@@ -720,26 +722,32 @@ static void main_loop (void)
     uint64_t starts[WIDTH];
     uint64_t iteration = 0;
 
+    pthread_mutex_lock (&lock);
     for (int i = 0; i != WIDTH; ++i)
         recharge (V, blocks, starts, iteration, i);
+    pthread_mutex_unlock (&lock);
 
     while (true) {
         int t = loop_MD5 (V, &iteration);
 
-        int done = 0;
         for (int i = 0; i != WIDTH; ++i)
             if (TESTTEST (t, i)) {
-                ++done;
+                pthread_mutex_lock (&lock);
                 store (V, blocks, starts, iteration, i);
                 recharge (V, blocks, starts, iteration, i);
+                pthread_mutex_unlock (&lock);
             }
-        assert (done);
     }
 }
 
 
-int main()
+int main (int argc, char ** argv)
 {
+    if (argc > 1)
+        work_block = strtoul (argv[1], NULL, 0);
+    if (argc > 2)
+        work_step = strtoul (argv[2], NULL, 0);
+
     value_t v = DIAG (0);
 
 
@@ -758,7 +766,7 @@ int main()
     assert (v2 == EXTRACT (v, 2));
     assert (v3 == EXTRACT (v, 3));
 
-    printf ("Enter main loop...\n");
-
-    main_loop();
+    pthread_t th;
+    pthread_create (&th, NULL, main_loop, NULL);
+    main_loop (NULL);
 }
