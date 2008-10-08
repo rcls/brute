@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 static inline uint32_t SWAP (uint32_t a)
 {
@@ -584,7 +585,6 @@ static uint64_t recorded_iterations;
 #define TABLE_SIZE 4095
 static record_t * record_table[TABLE_SIZE];
 
-
 static void collision (const record_t * A,
                        const record_t * B)
 {
@@ -677,6 +677,7 @@ static void collision (const record_t * A,
     abort();
 }
 
+static struct timeval start_time;
 
 static void store (value_t * v,
                    uint64_t * blocks,
@@ -684,6 +685,13 @@ static void store (value_t * v,
                    uint64_t iteration,
                    int index)
 {
+    struct timeval current_time;
+    gettimeofday (&current_time, NULL);
+    uint64_t milliseconds = current_time.tv_sec - start_time.tv_sec;
+    milliseconds *= 1000000;
+    milliseconds += current_time.tv_usec - start_time.tv_usec;
+    milliseconds /= 1000;
+
     record_t * record = malloc (sizeof (record_t));
     record->h[0] = EXTRACT (v[0], index);
     record->h[1] = EXTRACT (v[1], index);
@@ -692,11 +700,11 @@ static void store (value_t * v,
     record->iterations = iteration - starts[index];
     recorded_iterations += record->iterations;
 
-    printf ("S: %08x %08x -%11lu - %08x %08x %08x [%lu]\n",
+    printf ("%08x %08x -%10lu - %08x %08x %08x [%lu/%lu]\n",
             SWAP (record->block), SWAP (record->block >> 32),
             record->iterations,
             SWAP (record->h[0]), SWAP (record->h[1]), SWAP (record->h[2]),
-            recorded_iterations);
+            recorded_iterations, iteration * 1000 / milliseconds);
     fflush (NULL);
 
     uint32_t hash = record->h[0] ^ record->h[1] ^ record->h[2];
@@ -765,6 +773,8 @@ int main (int argc, char ** argv)
     assert (v1 == EXTRACT (v, 1));
     assert (v2 == EXTRACT (v, 2));
     assert (v3 == EXTRACT (v, 3));
+
+    gettimeofday (&start_time, NULL);
 
     pthread_t th;
     pthread_create (&th, NULL, main_loop, NULL);
