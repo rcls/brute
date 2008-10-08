@@ -8,6 +8,9 @@ all: brute
 brute: brute.o -lpthread
 #brute LIBS = -lcrypto
 
+%.s: %.c
+	$(COMPILE) -S -o $@ $<
+
 brute3.c: brute.c
 	cp brute.c brute3.c
 
