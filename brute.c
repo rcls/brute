@@ -210,35 +210,6 @@ static INLINE value4_t ASCIIFY4 (value4_t nibbles)
 }
 
 
-static INLINE void EXPAND4 (value4_t v,
-                            value4_t * __restrict__ V0,
-                            value4_t * __restrict__ V1)
-{
-    *V0 = RIGHT4(v, 4) & DIAG4 (0x0f0f0f0f);
-    *V1 = v & DIAG4 (0x0f0f0f0f);
-    BYTE_INTERLEAVE4 (V0, V1);
-    *V0 = ASCIIFY4 (*V0);
-    *V1 = ASCIIFY4 (*V1);
-
-    NODEBUG ("Expand: %08x %08x %08x %08x\n"
-             "        %08x %08x %08x %08x\n"
-             "        %08x %08x %08x %08x\n",
-             SWAP (EXTRACT4 (v, 0)),
-             SWAP (EXTRACT4 (v, 1)),
-             SWAP (EXTRACT4 (v, 2)),
-             SWAP (EXTRACT4 (v, 3)),
-
-             SWAP (EXTRACT4 (*V0, 0)),
-             SWAP (EXTRACT4 (*V0, 1)),
-             SWAP (EXTRACT4 (*V0, 2)),
-             SWAP (EXTRACT4 (*V0, 3)),
-
-             SWAP (EXTRACT4 (*V1, 0)),
-             SWAP (EXTRACT4 (*V1, 1)),
-             SWAP (EXTRACT4 (*V1, 2)),
-             SWAP (EXTRACT4 (*V1, 3)));
-}
-
 #if WIDTH == 4
 
 typedef value4_t value_t;
@@ -251,7 +222,6 @@ typedef value4_t value_t;
 #define TESTTEST TESTTEST4
 #define EXTRACT EXTRACT4
 #define INSERT INSERT4
-#define EXPAND EXPAND4
 
 #elif WIDTH == 8
 
@@ -259,6 +229,7 @@ typedef struct value_t {
     value4_t a;
     value4_t b;
 } value_t;
+
 
 static INLINE value_t DIAG (uint32_t v)
 {
@@ -300,13 +271,6 @@ static INLINE value_t RIGHT (value_t x, uint32_t n)
 {
     return (value_t) { RIGHT4 (x.a, n), RIGHT4 (x.b, n) };
 }
-static INLINE void EXPAND (value_t v,
-                           value_t * __restrict__ V0,
-                           value_t * __restrict__ V1)
-{
-    EXPAND4 (v.a, &V0->a, &V1->a);
-    EXPAND4 (v.b, &V0->b, &V1->b);
-}
 static INLINE int TEST (value_t v)
 {
     return (TEST4 (v.b) << 16) | TEST4 (v.a);
@@ -325,7 +289,16 @@ static uint32_t EXTRACT (value_t v, int i)
     else
         return EXTRACT4 (v.b, i - 4);
 }
-
+static value_t ASCIIFY (value_t v)
+{
+    return (value_t) { ASCIIFY4 (v.a), ASCIIFY4 (v.b) };
+}
+static void BYTE_INTERLEAVE (value_t * __restrict__ x,
+                             value_t * __restrict__ y)
+{
+    BYTE_INTERLEAVE4 (&x->a, &y->a);
+    BYTE_INTERLEAVE4 (&x->b, &y->b);
+}
 
 #define TESTTEST TESTTEST4
 
@@ -340,7 +313,6 @@ static uint32_t EXTRACT (value_t v, int i)
 #define OR OR
 #define RIGHT RIGHT
 #define XOR XOR
-#define EXPAND EXPAND
 
 #else
 #error Huh? Unknown width
@@ -376,9 +348,40 @@ static INLINE value_t ROTATE_LEFT (value_t a, unsigned count)
     return OR (LEFT (a, count), RIGHT (a, 32 - count));
 }
 #endif
+#ifndef EXPAND
+static INLINE void EXPAND (value_t v,
+                           value_t * __restrict__ V0,
+                           value_t * __restrict__ V1)
+{
+    *V0 = AND (RIGHT(v, 4), DIAG (0x0f0f0f0f));
+    *V1 = AND (v, DIAG (0x0f0f0f0f));
+    BYTE_INTERLEAVE (V0, V1);
+    *V0 = ASCIIFY (*V0);
+    *V1 = ASCIIFY (*V1);
+
+    NODEBUG ("Expand: %08x %08x %08x %08x\n"
+             "        %08x %08x %08x %08x\n"
+             "        %08x %08x %08x %08x\n",
+             SWAP (EXTRACT (v, 0)),
+             SWAP (EXTRACT (v, 1)),
+             SWAP (EXTRACT (v, 2)),
+             SWAP (EXTRACT (v, 3)),
+
+             SWAP (EXTRACT (*V0, 0)),
+             SWAP (EXTRACT (*V0, 1)),
+             SWAP (EXTRACT (*V0, 2)),
+             SWAP (EXTRACT (*V0, 3)),
+
+             SWAP (EXTRACT (*V1, 0)),
+             SWAP (EXTRACT (*V1, 1)),
+             SWAP (EXTRACT (*V1, 2)),
+             SWAP (EXTRACT (*V1, 3)));
+}
+#endif
 #ifndef SPLIT
 #define SPLIT(v,V0,V1) value_t V0; value_t V1; EXPAND (v, &V0, &V1);
 #endif
+
 
 static INLINE value_t TRIM (value_t a, unsigned index)
 {
@@ -735,7 +738,8 @@ static void collision (const record_t * A,
     abort();
 }
 
-static struct timeval start_time;
+static __thread struct timeval last_time;
+static __thread uint64_t last_iters;
 
 static void store (value_t * v,
                    uint64_t * blocks,
@@ -745,9 +749,9 @@ static void store (value_t * v,
 {
     struct timeval current_time;
     gettimeofday (&current_time, NULL);
-    uint64_t milliseconds = current_time.tv_sec - start_time.tv_sec;
+    uint64_t milliseconds = current_time.tv_sec - last_time.tv_sec;
     milliseconds *= 1000000;
-    milliseconds += current_time.tv_usec - start_time.tv_usec;
+    milliseconds += current_time.tv_usec - last_time.tv_usec;
     milliseconds /= 1000;
 
     record_t * record = malloc (sizeof (record_t));
@@ -762,8 +766,11 @@ static void store (value_t * v,
             SWAP (record->block), SWAP (record->block >> 32),
             record->iterations,
             SWAP (record->h[0]), SWAP (record->h[1]), SWAP (record->h[2]),
-            recorded_iterations, iteration * 1000 / milliseconds);
+            recorded_iterations,
+            (iteration - last_iters) * 1000 / milliseconds);
     fflush (NULL);
+    last_time = current_time;
+    last_iters = iteration;
 
     uint32_t hash = record->h[0] ^ record->h[1] ^ record->h[2];
     hash %= TABLE_SIZE;
@@ -782,6 +789,8 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void * main_loop (void * ignore)
 {
+    gettimeofday (&last_time, NULL);
+
     value_t V[3];
     V[0] = V[1] = V[2] = DIAG (0);
     uint64_t blocks[WIDTH];
@@ -831,8 +840,6 @@ int main (int argc, char ** argv)
     assert (v1 == EXTRACT (v, 1));
     assert (v2 == EXTRACT (v, 2));
     assert (v3 == EXTRACT (v, 3));
-
-    gettimeofday (&start_time, NULL);
 
 /*     pthread_t th; */
 /*     pthread_create (&th, NULL, main_loop, NULL); */
