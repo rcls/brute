@@ -31,10 +31,10 @@ static inline uint32_t SWAP (uint32_t a)
 /* Bits of hash to take.  The hash function we compute collisions for
  * is the first BITS bits of the md5 value.  The program will require
  * around 1<<(BITS/2) md5 operations.  */
-#define BITS 55
+#define BITS 80
 
 /* Proportion out of 1<<32 of results to take.  */
-#define PROPORTION 512
+#define PROPORTION 16
 
 /* When we say inline we mean it --- we're relying heavily on constant
  * folding functions such as word() below.  */
@@ -46,87 +46,81 @@ static inline uint32_t SWAP (uint32_t a)
 /************************* MMX stuff.  **************************/
 
 /* Number of 32 bit words in a register.  */
-#define WIDTH 4
+#define WIDTH 8
 
-#if WIDTH == 4
-
-typedef unsigned __attribute__ ((vector_size (4 * WIDTH))) value_t;
-static INLINE value_t DIAG (uint32_t a)
+typedef unsigned __attribute__ ((vector_size (16))) value4_t;
+static INLINE value4_t DIAG4 (uint32_t a)
 {
-    return (value_t) { a, a, a, a };
+    return (value4_t) { a, a, a, a };
 }
 
 
-static INLINE uint32_t FIRST (value_t A)
+static INLINE uint32_t FIRST4 (value4_t A)
 {
-    typedef int int128 __attribute__ ((mode (TI)));
-    return (int128) A;
+    typedef unsigned u128 __attribute__ ((mode (TI)));
+    return (u128) A;
 }
 
 
-static inline value_t ANDN (value_t a, value_t b)
+static inline value4_t ANDN4 (value4_t a, value4_t b)
 {
     return __builtin_ia32_pandn128 (a, b);
 }
-#define ANDN ANDN
 
 
-#define GREATER_THAN(a, b) __builtin_ia32_pcmpgtd128 (a, b)
+#define RIGHT4(a,n) __builtin_ia32_psrldi128 (a, n)
+#define LEFT4(a,n) __builtin_ia32_pslldi128 (a, n)
 
-#define RIGHT(a,n) __builtin_ia32_psrldi128 (a, n)
-#define LEFT(a,n) __builtin_ia32_pslldi128 (a, n)
-
-
-static INLINE int TEST (value_t v)
+static INLINE int TEST4 (value4_t v)
 {
-    value_t b = __builtin_ia32_pcmpgtd128 (DIAG (PROPORTION + 0x80000000), v);
+    value4_t b = __builtin_ia32_pcmpgtd128 (DIAG4 (PROPORTION + 0x80000000), v);
     return __builtin_ia32_pmovmskb128 (b);
 }
 
-static INLINE bool TESTTEST (int m, int index)
+static INLINE bool TESTTEST4 (int m, int index)
 {
     return m & (1 << (index * 4));
 }
 
 
-static INLINE uint32_t EXTRACTi (value_t v, int index)
+static uint32_t EXTRACT4 (value4_t v, int index)
 {
     switch (index) {
     case 0:
-        return FIRST (v);
+        return FIRST4 (v);
     case 1:
-        return FIRST (__builtin_ia32_pshufd (v, 0x55));
+        return FIRST4 (__builtin_ia32_pshufd (v, 0x55));
     case 2:
-        return FIRST (__builtin_ia32_pshufd (v, 0xAA));
+        return FIRST4 (__builtin_ia32_pshufd (v, 0xAA));
     case 3:
-        return FIRST (__builtin_ia32_pshufd (v, 0xFF));
+        return FIRST4 (__builtin_ia32_pshufd (v, 0xFF));
     default:
         abort();
     }
 }
 
 
-static INLINE value_t INSERTi (value_t v, int index, uint32_t vv)
+static value4_t INSERT4 (value4_t v, int index, uint32_t vv)
 {
-    value_t mask;
-    value_t ins;
+    value4_t mask;
+    value4_t ins;
 
     switch (index) {
     case 0:
-        mask = (value_t) { 0, -1, -1, -1 };
-        ins = (value_t) { vv, 0, 0, 0 };
+        mask = (value4_t) { 0, -1, -1, -1 };
+        ins = (value4_t) { vv, 0, 0, 0 };
         break;
     case 1:
-        mask = (value_t) { -1, 0, -1, -1 };
-        ins = (value_t) { 0, vv, 0, 0 };
+        mask = (value4_t) { -1, 0, -1, -1 };
+        ins = (value4_t) { 0, vv, 0, 0 };
         break;
     case 2:
-        mask = (value_t) { -1, -1, 0, -1 };
-        ins = (value_t) { 0, 0, vv, 0 };
+        mask = (value4_t) { -1, -1, 0, -1 };
+        ins = (value4_t) { 0, 0, vv, 0 };
         break;
     case 3:
-        mask = (value_t) { -1, -1, -1, 0 };
-        ins = (value_t) { 0, 0, 0, vv };
+        mask = (value4_t) { -1, -1, -1, 0 };
+        ins = (value4_t) { 0, 0, 0, vv };
         break;
     default:
         abort();
@@ -136,33 +130,34 @@ static INLINE value_t INSERTi (value_t v, int index, uint32_t vv)
 
 
 
-static INLINE void BYTE_INTERLEAVE (value_t * lo, value_t * hi)
+static INLINE void BYTE_INTERLEAVE4 (value4_t * __restrict__ lo,
+                                     value4_t * __restrict__ hi)
 {
 #define BIDEBUG NODEBUG
     BIDEBUG ("I0: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
-             SWAP (EXTRACTi (*lo, 0)),
-             SWAP (EXTRACTi (*lo, 1)),
-             SWAP (EXTRACTi (*lo, 2)),
-             SWAP (EXTRACTi (*lo, 3)),
-             SWAP (EXTRACTi (*hi, 0)),
-             SWAP (EXTRACTi (*hi, 1)),
-             SWAP (EXTRACTi (*hi, 2)),
-             SWAP (EXTRACTi (*hi, 3)));
+             SWAP (EXTRACT4 (*lo, 0)),
+             SWAP (EXTRACT4 (*lo, 1)),
+             SWAP (EXTRACT4 (*lo, 2)),
+             SWAP (EXTRACT4 (*lo, 3)),
+             SWAP (EXTRACT4 (*hi, 0)),
+             SWAP (EXTRACT4 (*hi, 1)),
+             SWAP (EXTRACT4 (*hi, 2)),
+             SWAP (EXTRACT4 (*hi, 3)));
 
     // lo 8 bytes interleaved into 16 bytes.
-    value_t lo1 = __builtin_ia32_punpcklbw128 (*lo, *hi);
+    value4_t lo1 = __builtin_ia32_punpcklbw128 (*lo, *hi);
     // hi 8 bytes interleaved into 16 bytes.
-    value_t hi1 = __builtin_ia32_punpckhbw128 (*lo, *hi);
+    value4_t hi1 = __builtin_ia32_punpckhbw128 (*lo, *hi);
 
     BIDEBUG ("I1: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
-             SWAP (EXTRACTi (lo1, 0)),
-             SWAP (EXTRACTi (lo1, 1)),
-             SWAP (EXTRACTi (lo1, 2)),
-             SWAP (EXTRACTi (lo1, 3)),
-             SWAP (EXTRACTi (hi1, 0)),
-             SWAP (EXTRACTi (hi1, 1)),
-             SWAP (EXTRACTi (hi1, 2)),
-             SWAP (EXTRACTi (hi1, 3)));
+             SWAP (EXTRACT4 (lo1, 0)),
+             SWAP (EXTRACT4 (lo1, 1)),
+             SWAP (EXTRACT4 (lo1, 2)),
+             SWAP (EXTRACT4 (lo1, 3)),
+             SWAP (EXTRACT4 (hi1, 0)),
+             SWAP (EXTRACT4 (hi1, 1)),
+             SWAP (EXTRACT4 (hi1, 2)),
+             SWAP (EXTRACT4 (hi1, 3)));
 
     // We now have the correct 32-bit words, only in the wrong positions.
     // Each 32 bit value has been expanded to 64, so we want
@@ -172,18 +167,18 @@ static INLINE void BYTE_INTERLEAVE (value_t * lo, value_t * hi)
     // lo.3 = hi1.2, lo.3 = hi1.3
     // If we swap the middle pair of 32 bits in each of lo1 and lo2, then we
     // only need to shuffle around 64 bit quantities:
-    value_t lo2 = __builtin_ia32_pshufd (lo1, 0xd8);
-    value_t hi2 = __builtin_ia32_pshufd (hi1, 0xd8);
+    value4_t lo2 = __builtin_ia32_pshufd (lo1, 0xd8);
+    value4_t hi2 = __builtin_ia32_pshufd (hi1, 0xd8);
 
     BIDEBUG ("I2: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
-             SWAP (EXTRACTi (lo2, 0)),
-             SWAP (EXTRACTi (lo2, 1)),
-             SWAP (EXTRACTi (lo2, 2)),
-             SWAP (EXTRACTi (lo2, 3)),
-             SWAP (EXTRACTi (hi2, 0)),
-             SWAP (EXTRACTi (hi2, 1)),
-             SWAP (EXTRACTi (hi2, 2)),
-             SWAP (EXTRACTi (hi2, 3)));
+             SWAP (EXTRACT4 (lo2, 0)),
+             SWAP (EXTRACT4 (lo2, 1)),
+             SWAP (EXTRACT4 (lo2, 2)),
+             SWAP (EXTRACT4 (lo2, 3)),
+             SWAP (EXTRACT4 (hi2, 0)),
+             SWAP (EXTRACT4 (hi2, 1)),
+             SWAP (EXTRACT4 (hi2, 2)),
+             SWAP (EXTRACT4 (hi2, 3)));
 
     // Now we want
     // lo.0 = lo2.0, hi.0 = lo2.2,
@@ -194,68 +189,161 @@ static INLINE void BYTE_INTERLEAVE (value_t * lo, value_t * hi)
     *hi = __builtin_ia32_punpckhqdq128 (lo2, hi2);
 
     BIDEBUG ("I3: %08x %08x %08x %08x  %08x %08x %08x %08x\n",
-             SWAP (EXTRACTi (*lo, 0)),
-             SWAP (EXTRACTi (*lo, 1)),
-             SWAP (EXTRACTi (*lo, 2)),
-             SWAP (EXTRACTi (*lo, 3)),
-             SWAP (EXTRACTi (*hi, 0)),
-             SWAP (EXTRACTi (*hi, 1)),
-             SWAP (EXTRACTi (*hi, 2)),
-             SWAP (EXTRACTi (*hi, 3)));
+             SWAP (EXTRACT4 (*lo, 0)),
+             SWAP (EXTRACT4 (*lo, 1)),
+             SWAP (EXTRACT4 (*lo, 2)),
+             SWAP (EXTRACT4 (*lo, 3)),
+             SWAP (EXTRACT4 (*hi, 0)),
+             SWAP (EXTRACT4 (*hi, 1)),
+             SWAP (EXTRACT4 (*hi, 2)),
+             SWAP (EXTRACT4 (*hi, 3)));
 }
 
 // Convert a collection of nibbles to ASCII values.
-static INLINE value_t ASCIIFY (value_t nibbles)
+static INLINE value4_t ASCIIFY4 (value4_t nibbles)
 {
-    value_t adjust = ((value_t) __builtin_ia32_pcmpgtb128 (
-                          nibbles, DIAG (0x09090909)))
-        & DIAG (0x27272727);
-    value_t result = __builtin_ia32_paddb128 (nibbles, DIAG (0x30303030));
+    value4_t adjust = ((value4_t) __builtin_ia32_pcmpgtb128 (
+                          nibbles, DIAG4 (0x09090909)))
+        & DIAG4 (0x27272727);
+    value4_t result = __builtin_ia32_paddb128 (nibbles, DIAG4 (0x30303030));
     return result + adjust;
 }
 
-static INLINE value_t LOW_NIBBLE (value_t w)
-{
-    return w & DIAG (0x0f0f0f0f);
-}
 
-static INLINE value_t HIGH_NIBBLE (value_t w)
+static INLINE void EXPAND4 (value4_t v,
+                            value4_t * __restrict__ V0,
+                            value4_t * __restrict__ V1)
 {
-    return RIGHT(w, 4) & DIAG (0x0f0f0f0f);
-}
-
-static INLINE void EXPAND (value_t v, value_t * V0, value_t * V1)
-{
-    *V0 = HIGH_NIBBLE (v);
-    *V1 = LOW_NIBBLE (v);
-    BYTE_INTERLEAVE (V0, V1);
-    *V0 = ASCIIFY (*V0);
-    *V1 = ASCIIFY (*V1);
+    *V0 = RIGHT4(v, 4) & DIAG4 (0x0f0f0f0f);
+    *V1 = v & DIAG4 (0x0f0f0f0f);
+    BYTE_INTERLEAVE4 (V0, V1);
+    *V0 = ASCIIFY4 (*V0);
+    *V1 = ASCIIFY4 (*V1);
 
     NODEBUG ("Expand: %08x %08x %08x %08x\n"
              "        %08x %08x %08x %08x\n"
              "        %08x %08x %08x %08x\n",
-             SWAP (EXTRACTi (v, 0)),
-             SWAP (EXTRACTi (v, 1)),
-             SWAP (EXTRACTi (v, 2)),
-             SWAP (EXTRACTi (v, 3)),
+             SWAP (EXTRACT4 (v, 0)),
+             SWAP (EXTRACT4 (v, 1)),
+             SWAP (EXTRACT4 (v, 2)),
+             SWAP (EXTRACT4 (v, 3)),
 
-             SWAP (EXTRACTi (*V0, 0)),
-             SWAP (EXTRACTi (*V0, 1)),
-             SWAP (EXTRACTi (*V0, 2)),
-             SWAP (EXTRACTi (*V0, 3)),
+             SWAP (EXTRACT4 (*V0, 0)),
+             SWAP (EXTRACT4 (*V0, 1)),
+             SWAP (EXTRACT4 (*V0, 2)),
+             SWAP (EXTRACT4 (*V0, 3)),
 
-             SWAP (EXTRACTi (*V1, 0)),
-             SWAP (EXTRACTi (*V1, 1)),
-             SWAP (EXTRACTi (*V1, 2)),
-             SWAP (EXTRACTi (*V1, 3)));
+             SWAP (EXTRACT4 (*V1, 0)),
+             SWAP (EXTRACT4 (*V1, 1)),
+             SWAP (EXTRACT4 (*V1, 2)),
+             SWAP (EXTRACT4 (*V1, 3)));
+}
+
+#if WIDTH == 4
+
+typedef value4_t value_t;
+#define DIAG DIAG4
+#define FIRST FIRST4
+#define ANDN ANDN4
+#define RIGHT RIGHT4
+#define LEFT LEFT4
+#define TEST TEST4
+#define TESTTEST TESTTEST4
+#define EXTRACT EXTRACT4
+#define INSERT INSERT4
+#define EXPAND EXPAND4
+
+#elif WIDTH == 8
+
+typedef struct value_t {
+    value4_t a;
+    value4_t b;
+} value_t;
+
+static INLINE value_t DIAG (uint32_t v)
+{
+    return (value_t) { DIAG4 (v), DIAG4 (v) };
+}
+static INLINE uint32_t FIRST (value_t v)
+{
+    return FIRST4 (v.a);
+}
+static INLINE value_t AND (value_t x, value_t y)
+{
+    return (value_t) { x.a & y.a, x.b & y.b };
+}
+static INLINE value_t ANDN (value_t x, value_t y)
+{
+    return (value_t) { ANDN4 (x.a, y.a), ANDN4 (x.b, y.b) };
+}
+static INLINE value_t NOT (value_t x)
+{
+    return (value_t) { ~x.a, ~x.b };
+}
+static INLINE value_t OR (value_t x, value_t y)
+{
+    return (value_t) { x.a | y.a, x.b | y.b };
+}
+static INLINE value_t XOR (value_t x, value_t y)
+{
+    return (value_t) { x.a ^ y.a, x.b ^ y.b };
+}
+static INLINE value_t ADD (value_t x, value_t y)
+{
+    return (value_t) { x.a + y.a, x.b + y.b };
+}
+static INLINE value_t LEFT (value_t x, uint32_t n)
+{
+    return (value_t) { LEFT4 (x.a, n), LEFT4 (x.b, n) };
+}
+static INLINE value_t RIGHT (value_t x, uint32_t n)
+{
+    return (value_t) { RIGHT4 (x.a, n), RIGHT4 (x.b, n) };
+}
+static INLINE void EXPAND (value_t v,
+                           value_t * __restrict__ V0,
+                           value_t * __restrict__ V1)
+{
+    EXPAND4 (v.a, &V0->a, &V1->a);
+    EXPAND4 (v.b, &V0->b, &V1->b);
+}
+static INLINE int TEST (value_t v)
+{
+    return (TEST4 (v.b) << 16) | TEST4 (v.a);
+}
+static value_t INSERT (value_t v, int i, uint32_t x)
+{
+    if (i < 4)
+        return (value_t) { INSERT4 (v.a, i, x), v.b };
+    else
+        return (value_t) { v.a, INSERT4 (v.b, i - 4, x) };
+}
+static uint32_t EXTRACT (value_t v, int i)
+{
+    if (i < 4)
+        return EXTRACT4 (v.a, i);
+    else
+        return EXTRACT4 (v.b, i - 4);
 }
 
 
+#define TESTTEST TESTTEST4
+
+
+#define DIAG DIAG
+#define FIRST FIRST
+#define ADD ADD
+#define AND AND
+#define ANDN ANDN
+#define LEFT LEFT
+#define NOT NOT
+#define OR OR
+#define RIGHT RIGHT
+#define XOR XOR
+#define EXPAND EXPAND
+
 #else
-
-#error Huh
-
+#error Huh? Unknown width
 #endif
 
 #ifndef ANDN
@@ -276,9 +364,6 @@ static INLINE void EXPAND (value_t v, value_t * V0, value_t * V1)
 #ifndef ADD
 #define ADD(a,b)  ((a) + (b))
 #endif
-#ifndef SUB
-#define SUB(a,b)  ((a) - (b))
-#endif
 #ifndef LEFT
 static INLINE value_t LEFT (value_t a, int count) { return a << count; }
 #endif
@@ -290,35 +375,9 @@ static INLINE value_t ROTATE_LEFT (value_t a, unsigned count)
 {
     return OR (LEFT (a, count), RIGHT (a, 32 - count));
 }
-
-
-static uint32_t EXTRACTo (value_t v, int index)
-{
-    return EXTRACTi (v, index);
-}
-
-static INLINE uint32_t EXTRACT (value_t v, int index)
-{
-    if (__builtin_constant_p (index))
-        return EXTRACTi (v, index);
-    else
-        return EXTRACTo (v, index);
-}
-
-
-static value_t INSERTo (value_t v, int index, uint32_t vv)
-{
-    return INSERTi (v, index, vv);
-}
-
-static INLINE value_t INSERT (value_t v, int index, uint32_t vv)
-{
-    if (__builtin_constant_p (index))
-        return INSERTi (v, index, vv);
-    else
-        return INSERTo (v, index, vv);
-}
-
+#endif
+#ifndef SPLIT
+#define SPLIT(v,V0,V1) value_t V0; value_t V1; EXPAND (v, &V0, &V1);
 #endif
 
 static INLINE value_t TRIM (value_t a, unsigned index)
@@ -372,25 +431,11 @@ static INLINE value_t TRIM (value_t a, unsigned index)
 /* ROTATE_LEFT rotates x left n bits.  */
 //#define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
 
-#define GENERATE1(FUN,a, b, c, d, x, s, ac) {		\
+#define GENERATE(FUN,a, b, c, d, x, s, ac) {		\
 	(a) = A4 ((a), FUN ((b), (c), (d)), (x), DIAG (ac));	\
 	(a) = ROTATE_LEFT ((a), (s));			\
         (a) = ADD ((a), (b));				\
     }
-
-#define GENERATE(FUN,a, b, c, d, x, s, ac) {                            \
-	X##a = A4 (X##a, FUN (X##b, X##c, X##d), X##x, DIAG (ac));      \
-	Y##a = A4 (Y##a, FUN (Y##b, Y##c, Y##d), Y##x, DIAG (ac));      \
-	X##a = ROTATE_LEFT (X##a, s);                                   \
-	Y##a = ROTATE_LEFT (Y##a, s);                                   \
-        X##a = ADD (X##a, X##b);                                        \
-        Y##a = ADD (Y##a, Y##b);                                        \
-    }
-
-#define SPLIT(v,V0,V1)                                     \
-    value_t X##V0; value_t X##V1; EXPAND (*X##v, &X##V0, &X##V1); \
-    value_t Y##V0; value_t Y##V1; EXPAND (*Y##v, &Y##V0, &Y##V1);
-
 
 /* FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
  * Rotation is separate from addition to prevent recomputation.  */
@@ -401,172 +446,146 @@ static INLINE value_t TRIM (value_t a, unsigned index)
 
 /* Generate md5 hash, storing the first 'whole' complete bytes and
  * masking the next byte by 'mask'.  Gets specialised to what we want.  */
-static void INLINE inline_MD5 (value_t * __restrict Xv0,
-                               value_t * __restrict Xv1,
-                               value_t * __restrict Xv2,
-                               value_t * __restrict Yv0,
-                               value_t * __restrict Yv1,
-                               value_t * __restrict Yv2)
+static void INLINE inline_MD5 (value_t * __restrict D0,
+                               value_t * __restrict D1,
+                               value_t * __restrict D2)
 {
 #define MD5DEBUG NODEBUG
     MD5DEBUG ("Input is %08x %08x %08x\n",
-              SWAP (FIRST (*Xv0)), SWAP (FIRST (*Xv1)), SWAP (FIRST (*Xv2)));
+              SWAP (FIRST (*D0)), SWAP (FIRST (*D1)), SWAP (FIRST (*D2)));
 
     const value_t init0 = DIAG (0x67452301);
     const value_t init1 = DIAG (0xefcdab89);
     const value_t init2 = DIAG (0x98badcfe);
     const value_t init3 = DIAG (0x10325476);
 
-    value_t Xa = init0;
-    value_t Xb = init1;
-    value_t Xc = init2;
-    value_t Xd = init3;
-    value_t Ya = init0;
-    value_t Yb = init1;
-    value_t Yc = init2;
-    value_t Yd = init3;
+    value_t a = init0;
+    value_t b = init1;
+    value_t c = init2;
+    value_t d = init3;
 
     /* Round 1 */
-    SPLIT (v0, t00, t01);
-    FF (a, b, c, d, t00, S11, 0xd76aa478); /* 1 */
-    FF (d, a, b, c, t01, S12, 0xe8c7b756); /* 2 */
+    SPLIT (*D0, xx00, xx01);
+    FF (a, b, c, d, xx00, S11, 0xd76aa478); /* 1 */
+    FF (d, a, b, c, xx01, S12, 0xe8c7b756); /* 2 */
 
-    SPLIT (v1, t02, t03);
-    FF (c, d, a, b, t02, S13, 0x242070db); /* 3 */
-    FF (b, c, d, a, t03, S14, 0xc1bdceee); /* 4 */
+    SPLIT (*D1, xx02, xx03);
+    FF (c, d, a, b, xx02, S13, 0x242070db); /* 3 */
+    FF (b, c, d, a, xx03, S14, 0xc1bdceee); /* 4 */
 
-    SPLIT (v2, t04, t05);
-    FF (a, b, c, d, t04, S11, 0xf57c0faf); /* 5 */
-    FF (d, a, b, c, t05, S12, 0x4787c62a); /* 6 */
+    SPLIT (*D2, xx04, xx05);
+    FF (a, b, c, d, xx04, S11, 0xf57c0faf); /* 5 */
+    FF (d, a, b, c, xx05, S12, 0x4787c62a); /* 6 */
 
-    const value_t Xt06 = DIAG (0x80);
-    const value_t Yt06 = DIAG (0x80);
-    FF (c, d, a, b, t06, S13, 0xa8304613); /* 7 */
+    const value_t xx06 = DIAG (0x80);
+    FF (c, d, a, b, xx06, S13, 0xa8304613); /* 7 */
 
-    const value_t Xt07 = DIAG (0);
-    const value_t Yt07 = DIAG (0);
-    FF (b, c, d, a, t07, S14, 0xfd469501); /* 8 */
+    const value_t xx07 = DIAG (0);
+    FF (b, c, d, a, xx07, S14, 0xfd469501); /* 8 */
 
-    const value_t Xt08 = DIAG (0);
-    const value_t Yt08 = DIAG (0);
-    FF (a, b, c, d, t08, S11, 0x698098d8); /* 9 */
+    const value_t xx08 = DIAG (0);
+    FF (a, b, c, d, xx08, S11, 0x698098d8); /* 9 */
 
-    const value_t Xt09 = DIAG (0);
-    const value_t Yt09 = DIAG (0);
-    FF (d, a, b, c, t09, S12, 0x8b44f7af); /* 10 */
+    const value_t xx09 = DIAG (0);
+    FF (d, a, b, c, xx09, S12, 0x8b44f7af); /* 10 */
 
-    const value_t Xt10 = DIAG (0);
-    const value_t Yt10 = DIAG (0);
-    FF (c, d, a, b, t10, S13, 0xffff5bb1); /* 11 */
+    const value_t xx10 = DIAG (0);
+    FF (c, d, a, b, xx10, S13, 0xffff5bb1); /* 11 */
 
-    const value_t Xt11 = DIAG (0);
-    const value_t Yt11 = DIAG (0);
-    FF (b, c, d, a, t11, S14, 0x895cd7be); /* 12 */
+    const value_t xx11 = DIAG (0);
+    FF (b, c, d, a, xx11, S14, 0x895cd7be); /* 12 */
 
-    const value_t Xt12 = DIAG (0);
-    const value_t Yt12 = DIAG (0);
-    FF (a, b, c, d, t12, S11, 0x6b901122); /* 13 */
+    const value_t xx12 = DIAG (0);
+    FF (a, b, c, d, xx12, S11, 0x6b901122); /* 13 */
 
-    const value_t Xt13 = DIAG (0);
-    const value_t Yt13 = DIAG (0);
-    FF (d, a, b, c, t13, S12, 0xfd987193); /* 14 */
+    const value_t xx13 = DIAG (0);
+    FF (d, a, b, c, xx13, S12, 0xfd987193); /* 14 */
 
-    const value_t Xt14 = DIAG (3 * 32 * 2);
-    const value_t Yt14 = DIAG (3 * 32 * 2);
-    FF (c, d, a, b, t14, S13, 0xa679438e); /* 15 */
+    const value_t xx14 = DIAG (3 * 32 * 2);
+    FF (c, d, a, b, xx14, S13, 0xa679438e); /* 15 */
 
-    const value_t Xt15 = DIAG (0);
-    const value_t Yt15 = DIAG (0);
-    FF (b, c, d, a, t15, S14, 0x49b40821); /* 16 */
+    const value_t xx15 = DIAG (0);
+    FF (b, c, d, a, xx15, S14, 0x49b40821); /* 16 */
 
     MD5DEBUG ("BLOCK IS is \n"
               "  %08x %08x %08x %08x %08x %08x %08x %08x\n"
               "  %08x %08x %08x %08x %08x %08x %08x %08x\n",
-              FIRST (Xt00), FIRST (Xt01), FIRST (Xt02), FIRST (Xt03),
-              FIRST (Xt04), FIRST (Xt05), FIRST (Xt06), FIRST (Xt07),
-              FIRST (Xt08), FIRST (Xt09), FIRST (Xt10), FIRST (Xt11),
-              FIRST (Xt12), FIRST (Xt13), FIRST (Xt14), FIRST (Xt15));
+              FIRST (xx00), FIRST (xx01), FIRST (xx02), FIRST (xx03),
+              FIRST (xx04), FIRST (xx05), FIRST (xx06), FIRST (xx07),
+              FIRST (xx08), FIRST (xx09), FIRST (xx10), FIRST (xx11),
+              FIRST (xx12), FIRST (xx13), FIRST (xx14), FIRST (xx15));
 
     /* Round 2 */
-    GG (a, b, c, d, t01, S21, 0xf61e2562); /* 17 */
-    GG (d, a, b, c, t06, S22, 0xc040b340); /* 18 */
-    GG (c, d, a, b, t11, S23, 0x265e5a51); /* 19 */
-    GG (b, c, d, a, t00, S24, 0xe9b6c7aa); /* 20 */
-    GG (a, b, c, d, t05, S21, 0xd62f105d); /* 21 */
-    GG (d, a, b, c, t10, S22,  0x2441453); /* 22 */
-    GG (c, d, a, b, t15, S23, 0xd8a1e681); /* 23 */
-    GG (b, c, d, a, t04, S24, 0xe7d3fbc8); /* 24 */
-    GG (a, b, c, d, t09, S21, 0x21e1cde6); /* 25 */
-    GG (d, a, b, c, t14, S22, 0xc33707d6); /* 26 */
-    GG (c, d, a, b, t03, S23, 0xf4d50d87); /* 27 */
-    GG (b, c, d, a, t08, S24, 0x455a14ed); /* 28 */
-    GG (a, b, c, d, t13, S21, 0xa9e3e905); /* 29 */
-    GG (d, a, b, c, t02, S22, 0xfcefa3f8); /* 30 */
-    GG (c, d, a, b, t07, S23, 0x676f02d9); /* 31 */
-    GG (b, c, d, a, t12, S24, 0x8d2a4c8a); /* 32 */
+    GG (a, b, c, d, xx01, S21, 0xf61e2562); /* 17 */
+    GG (d, a, b, c, xx06, S22, 0xc040b340); /* 18 */
+    GG (c, d, a, b, xx11, S23, 0x265e5a51); /* 19 */
+    GG (b, c, d, a, xx00, S24, 0xe9b6c7aa); /* 20 */
+    GG (a, b, c, d, xx05, S21, 0xd62f105d); /* 21 */
+    GG (d, a, b, c, xx10, S22,  0x2441453); /* 22 */
+    GG (c, d, a, b, xx15, S23, 0xd8a1e681); /* 23 */
+    GG (b, c, d, a, xx04, S24, 0xe7d3fbc8); /* 24 */
+    GG (a, b, c, d, xx09, S21, 0x21e1cde6); /* 25 */
+    GG (d, a, b, c, xx14, S22, 0xc33707d6); /* 26 */
+    GG (c, d, a, b, xx03, S23, 0xf4d50d87); /* 27 */
+    GG (b, c, d, a, xx08, S24, 0x455a14ed); /* 28 */
+    GG (a, b, c, d, xx13, S21, 0xa9e3e905); /* 29 */
+    GG (d, a, b, c, xx02, S22, 0xfcefa3f8); /* 30 */
+    GG (c, d, a, b, xx07, S23, 0x676f02d9); /* 31 */
+    GG (b, c, d, a, xx12, S24, 0x8d2a4c8a); /* 32 */
 
     /* Round 3 */
-    HH (a, b, c, d, t05, S31, 0xfffa3942); /* 33 */
-    HH (d, a, b, c, t08, S32, 0x8771f681); /* 34 */
-    HH (c, d, a, b, t11, S33, 0x6d9d6122); /* 35 */
-    HH (b, c, d, a, t14, S34, 0xfde5380c); /* 36 */
-    HH (a, b, c, d, t01, S31, 0xa4beea44); /* 37 */
-    HH (d, a, b, c, t04, S32, 0x4bdecfa9); /* 38 */
-    HH (c, d, a, b, t07, S33, 0xf6bb4b60); /* 39 */
-    HH (b, c, d, a, t10, S34, 0xbebfbc70); /* 40 */
-    HH (a, b, c, d, t13, S31, 0x289b7ec6); /* 41 */
-    HH (d, a, b, c, t00, S32, 0xeaa127fa); /* 42 */
-    HH (c, d, a, b, t03, S33, 0xd4ef3085); /* 43 */
-    HH (b, c, d, a, t06, S34,  0x4881d05); /* 44 */
-    HH (a, b, c, d, t09, S31, 0xd9d4d039); /* 45 */
-    HH (d, a, b, c, t12, S32, 0xe6db99e5); /* 46 */
-    HH (c, d, a, b, t15, S33, 0x1fa27cf8); /* 47 */
-    HH (b, c, d, a, t02, S34, 0xc4ac5665); /* 48 */
+    HH (a, b, c, d, xx05, S31, 0xfffa3942); /* 33 */
+    HH (d, a, b, c, xx08, S32, 0x8771f681); /* 34 */
+    HH (c, d, a, b, xx11, S33, 0x6d9d6122); /* 35 */
+    HH (b, c, d, a, xx14, S34, 0xfde5380c); /* 36 */
+    HH (a, b, c, d, xx01, S31, 0xa4beea44); /* 37 */
+    HH (d, a, b, c, xx04, S32, 0x4bdecfa9); /* 38 */
+    HH (c, d, a, b, xx07, S33, 0xf6bb4b60); /* 39 */
+    HH (b, c, d, a, xx10, S34, 0xbebfbc70); /* 40 */
+    HH (a, b, c, d, xx13, S31, 0x289b7ec6); /* 41 */
+    HH (d, a, b, c, xx00, S32, 0xeaa127fa); /* 42 */
+    HH (c, d, a, b, xx03, S33, 0xd4ef3085); /* 43 */
+    HH (b, c, d, a, xx06, S34,  0x4881d05); /* 44 */
+    HH (a, b, c, d, xx09, S31, 0xd9d4d039); /* 45 */
+    HH (d, a, b, c, xx12, S32, 0xe6db99e5); /* 46 */
+    HH (c, d, a, b, xx15, S33, 0x1fa27cf8); /* 47 */
+    HH (b, c, d, a, xx02, S34, 0xc4ac5665); /* 48 */
 
     /* Round 4 */
-    II (a, b, c, d, t00, S41, 0xf4292244); /* 49 */
-    II (d, a, b, c, t07, S42, 0x432aff97); /* 50 */
-    II (c, d, a, b, t14, S43, 0xab9423a7); /* 51 */
-    II (b, c, d, a, t05, S44, 0xfc93a039); /* 52 */
-    II (a, b, c, d, t12, S41, 0x655b59c3); /* 53 */
-    II (d, a, b, c, t03, S42, 0x8f0ccc92); /* 54 */
-    II (c, d, a, b, t10, S43, 0xffeff47d); /* 55 */
-    II (b, c, d, a, t01, S44, 0x85845dd1); /* 56 */
-    II (a, b, c, d, t08, S41, 0x6fa87e4f); /* 57 */
-    II (d, a, b, c, t15, S42, 0xfe2ce6e0); /* 58 */
-    II (c, d, a, b, t06, S43, 0xa3014314); /* 59 */
-    II (b, c, d, a, t13, S44, 0x4e0811a1); /* 60 */
-    II (a, b, c, d, t04, S41, 0xf7537e82); /* 61 */
-    II (d, a, b, c, t11, S42, 0xbd3af235); /* 62 */
-    II (c, d, a, b, t02, S43, 0x2ad7d2bb); /* 63 */
-    II (b, c, d, a, t09, S44, 0xeb86d391); /* 64 */
+    II (a, b, c, d, xx00, S41, 0xf4292244); /* 49 */
+    II (d, a, b, c, xx07, S42, 0x432aff97); /* 50 */
+    II (c, d, a, b, xx14, S43, 0xab9423a7); /* 51 */
+    II (b, c, d, a, xx05, S44, 0xfc93a039); /* 52 */
+    II (a, b, c, d, xx12, S41, 0x655b59c3); /* 53 */
+    II (d, a, b, c, xx03, S42, 0x8f0ccc92); /* 54 */
+    II (c, d, a, b, xx10, S43, 0xffeff47d); /* 55 */
+    II (b, c, d, a, xx01, S44, 0x85845dd1); /* 56 */
+    II (a, b, c, d, xx08, S41, 0x6fa87e4f); /* 57 */
+    II (d, a, b, c, xx15, S42, 0xfe2ce6e0); /* 58 */
+    II (c, d, a, b, xx06, S43, 0xa3014314); /* 59 */
+    II (b, c, d, a, xx13, S44, 0x4e0811a1); /* 60 */
+    II (a, b, c, d, xx04, S41, 0xf7537e82); /* 61 */
+    II (d, a, b, c, xx11, S42, 0xbd3af235); /* 62 */
+    II (c, d, a, b, xx02, S43, 0x2ad7d2bb); /* 63 */
+    II (b, c, d, a, xx09, S44, 0xeb86d391); /* 64 */
 
-    Xa = ADD (Xa, init0);
-    Ya = ADD (Ya, init0);
-    Xb = ADD (Xb, init1);
-    Yb = ADD (Yb, init1);
-    Xc = ADD (Xc, init2);
-    Yc = ADD (Yc, init2);
-    Xd = ADD (Xd, init3);
-    Yd = ADD (Yd, init3);
+    a = ADD (a, init0);
+    b = ADD (b, init1);
+    c = ADD (c, init2);
+    d = ADD (d, init3);
 
-    *Xv0 = TRIM (Xa, 0);
-    *Yv0 = TRIM (Ya, 0);
-    *Xv1 = TRIM (Xb, 1);
-    *Yv1 = TRIM (Yb, 1);
-    *Xv2 = TRIM (Xc, 2);
-    *Yv2 = TRIM (Yc, 2);
+    *D0 = TRIM (a, 0);
+    *D1 = TRIM (b, 1);
+    *D2 = TRIM (c, 2);
 
     MD5DEBUG ("Result is %08x %08x %08x\n",
-              SWAP (FIRST (*Xv0)), SWAP (FIRST (*Xv1)), SWAP (FIRST (*Xv2)));
+              SWAP (FIRST (*D0)), SWAP (FIRST (*D1)), SWAP (FIRST (*D2)));
 }
 
 
 static void outline_MD5 (value_t * v)
 {
-    value_t a[3];
-    a[0] = a[1] = a[2] = DIAG(0);
-    inline_MD5 (v, v + 1, v + 2, a, a + 1, a + 2);
+    inline_MD5 (v, v + 1, v + 2);
 }
 
 
@@ -576,26 +595,18 @@ static int loop_MD5 (value_t * __restrict__ v,
     value_t A = v[0];
     value_t B = v[1];
     value_t C = v[2];
-    value_t D = v[3];
-    value_t E = v[4];
-    value_t F = v[5];
-    int Xt;
-    int Yt;
+    int t;
 
     do {
-        inline_MD5 (&A, &B, &C, &D, &E, &F);
+        inline_MD5 (&A, &B, &C);
         ++*iterations;
-        Xt = TEST (A);
-        Yt = TEST (D);
+        t = TEST (A);
     }
-    while (__builtin_expect (Xt == 0, 1) && __builtin_expect (Yt == 0, 1));
+    while (__builtin_expect (t == 0, 1));
     v[0] = A;
     v[1] = B;
     v[2] = C;
-    v[3] = D;
-    v[4] = E;
-    v[5] = F;
-    return Xt + Yt * 65536;
+    return t;
 }
 
 
@@ -771,36 +782,27 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void * main_loop (void * ignore)
 {
-    value_t V[6];
-    V[0] = V[1] = V[2] = V[3] = V[4] = V[5] = DIAG (0);
-    uint64_t blocks[WIDTH * 2];
-    uint64_t starts[WIDTH * 2];
+    value_t V[3];
+    V[0] = V[1] = V[2] = DIAG (0);
+    uint64_t blocks[WIDTH];
+    uint64_t starts[WIDTH];
     uint64_t iteration = 0;
 
     pthread_mutex_lock (&lock);
-    for (int i = 0; i != WIDTH; ++i) {
+    for (int i = 0; i != WIDTH; ++i)
         recharge (V, blocks, starts, iteration, i);
-        recharge (V + 3, blocks + 4, starts + 4, iteration, i);
-    }
     pthread_mutex_unlock (&lock);
 
     while (true) {
         int t = loop_MD5 (V, &iteration);
 
-        for (int i = 0; i != WIDTH; ++i) {
+        for (int i = 0; i != WIDTH; ++i)
             if (TESTTEST (t, i)) {
                 pthread_mutex_lock (&lock);
                 store (V, blocks, starts, iteration, i);
                 recharge (V, blocks, starts, iteration, i);
                 pthread_mutex_unlock (&lock);
             }
-            if (TESTTEST (t, i + 4)) {
-                pthread_mutex_lock (&lock);
-                store (V + 3, blocks + 4, starts + 4, iteration, i);
-                recharge (V + 3, blocks + 4, starts + 4, iteration, i);
-                pthread_mutex_unlock (&lock);
-            }
-        }
     }
 }
 
@@ -832,7 +834,7 @@ int main (int argc, char ** argv)
 
     gettimeofday (&start_time, NULL);
 
-    pthread_t th;
-    pthread_create (&th, NULL, main_loop, NULL);
+/*     pthread_t th; */
+/*     pthread_create (&th, NULL, main_loop, NULL); */
     main_loop (NULL);
 }
