@@ -88,7 +88,7 @@ end component;
 			c_mux_pipeline_stages => 0,
 			c_has_mem_output_regs_b => 0,
 			c_load_init_file => 0,
-			c_xdevicefamily => "spartan3e",
+			c_xdevicefamily => "spartan3adsp",
 			c_has_mem_output_regs_a => 0,
 			c_write_depth_b => 64,
 			c_write_depth_a => 64,

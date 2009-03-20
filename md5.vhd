@@ -53,14 +53,14 @@ begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      if counta = conv_std_logic_vector (na-2, 5) then
+      if counta = conv_std_logic_vector (na-1, 5) then
         counta <= "00000";
       else
         counta <= counta + 1;
       end if;
     end if;
     if Clk'event and Clk = '1' then
-      if countb = conv_std_logic_vector (nb-2, 5) then
+      if countb = conv_std_logic_vector (nb-1, 5) then
         countb <= "00000";
       else
         countb <= countb + 1;
@@ -76,14 +76,15 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
 
 entity md5 is
-  Port (xxIN : in  std_logic_vector (31 downto 0);
+  Port (x00 : in  std_logic_vector (31 downto 0);
+        x01 : in  std_logic_vector (31 downto 0);
+        x02 : in  std_logic_vector (31 downto 0);
+        x03 : in  std_logic_vector (31 downto 0);
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
         Dout : out std_logic_vector (31 downto 0);
-        Clk : in std_logic;
-        phaseA : in std_logic;
-        phaseB : in std_logic);
+        Clk : in std_logic);
 end md5;
 
 --#define F(x, y, z) OR (AND ((x), (y)), ANDN ((x), (z)))
@@ -103,15 +104,6 @@ architecture Behavioral of md5 is
   constant S3 : iarray (0 to 3) := (4, 11, 16, 23);
   constant S4 : iarray (0 to 3) := (6, 10, 15, 21);
 
-  constant phaseA8 : std_logic_vector(7 downto 0) :=
-    (phaseA, phaseA, phaseA, phaseA,
-     phaseA, phaseA, phaseA, phaseA);
-  constant phaseA32 : word := phaseA8 & phaseA8 & phaseA8 & phaseA8;
-  constant phaseB8 : std_logic_vector(7 downto 0) :=
-    (phaseB, phaseB, phaseB, phaseB,
-     phaseB, phaseB, phaseB, phaseB);
-  constant phaseB32 : word := phaseB8 & phaseB8 & phaseB8 & phaseB8;
-  
   constant KK : dataset (0 to 63) := (
     x"d76aa478", x"e8c7b756", x"242070db", x"c1bdceee",
     x"f57c0faf", x"4787c62a", x"a8304613", x"fd469501",
@@ -132,43 +124,6 @@ architecture Behavioral of md5 is
   
 --alias u32 is std_logic_vector;
 
-  function phased (x : word; y : word) return word is
-  begin
-    return (x and y) or (phaseA32 and x and not y)
-      or (phaseB32 and y and not x);
-  end phased;
-
-  function phasedCV (x : word;
-                     y : word)
-    return std_logic_vector is
-  begin
-    return ((phaseA32 or y) and x)
-      or   (phaseB32 and y and not x);
-  end phasedCV;
-
-  function phasedVC (x : word;
-                     y : word)
-    return std_logic_vector is
-  begin
-    return ((phaseA32 or x) and y)
-      or   (phaseB32 and x and not y);
-  end phasedVC;
-
-  function phasedVVa (x : word;
-                      y : word)
-    return std_logic_vector is
-  begin
-    return (x and phaseA32) or (y and not phaseA32);
-  end phasedVVa;
-
-  function phasedVVb (x : word;
-                      y : word)
-    return std_logic_vector is
-  begin
-    return (x and not phaseB32) or (y and phaseB32);
-  end phasedVVb;
-
-  
   function F(x : word; y : word; z : word)
     return word is
   begin
@@ -242,60 +197,81 @@ architecture Behavioral of md5 is
     return to_stdlogicvector (to_bitvector (a + I(b,c,d) + x + ac) rol s) + b;
   end II;
 
-  signal A1 : dataset (0 to 8);
-  signal B1 : dataset (0 to 8);
-  signal C1 : dataset (0 to 8);
-  signal D1 : dataset (0 to 8);
+  -- Return the stage at which input #i is used in round 1.
+  function U1 (i : integer) return integer is
+  begin
+    return i;
+  end;
 
-  signal A2 : dataset (0 to 8);
-  signal B2 : dataset (0 to 8);
-  signal C2 : dataset (0 to 8);
-  signal D2 : dataset (0 to 8);
+  -- Return the stage at which input #i is used in round 2.
+  function U2 (i : integer) return integer is
+  begin
+    return 16 + (13 * i + 3) mod 16;
+  end;
+  
+  -- Return the stage at which input #i is used in round 3.
+  function U3 (i : integer) return integer is
+  begin
+    return 32 + (11 * i + 9) mod 16;
+  end;
+  
+  -- Return the stage at which input #i is used in round 4.
+  function U4 (i : integer) return integer is
+  begin
+    return 48 + (7 * i) mod 16;
+  end;
+  
+  -- Round 1 to round 2 delay.
+  function D12 (i : integer) return integer is
+  begin
+    return U2(i) - U1(i);
+  end;
 
-  signal A3 : dataset (0 to 8);
-  signal B3 : dataset (0 to 8);
-  signal C3 : dataset (0 to 8);
-  signal D3 : dataset (0 to 8);
+  -- Round 2 to round 3 delay.
+  function D23 (i : integer) return integer is
+  begin
+    return U3(i) - U2(i);
+  end;
 
-  signal A4 : dataset (0 to 8);
-  signal B4 : dataset (0 to 8);
-  signal C4 : dataset (0 to 8);
-  signal D4 : dataset (0 to 8);
+  -- Round 3 to round 4 delay.
+  function D34 (i : integer) return integer is
+  begin
+    return U4(i) - U3(i);
+  end;
+    
+  signal A : dataset (0 to 64);
+  signal B : dataset (0 to 64);
+  signal C : dataset (0 to 64);
+  signal D : dataset (0 to 64);
 
+  constant x04 : word := x"00000080";
+  constant x05 : word := x"00000000";
+  constant x06 : word := x"00000000";
+  constant x07 : word := x"00000000";
+  constant x08 : word := x"00000000";
+  constant x09 : word := x"00000000";
+  constant x10 : word := x"00000000";
+  constant x11 : word := x"00000000";
+  constant x12 : word := x"00000000";
+  constant x13 : word := x"00000000";
+  constant x14 : word := x"000000c0";
+  constant x15 : word := x"00000000";
 
-  constant iA : word := x"67452301";
-  constant iB : word := x"efcdab89";
-  constant iC : word := x"98badcfe";
-  constant iD : word := x"10325476";
-
-  signal xx00 : word;
-  signal xx01 : word;
-  signal xx02 : word;
-  signal xx03 : word;
-
-  constant xx04 : word := x"00000080";
-  constant xx05 : word := x"00000000";
-  constant xx06 : word := x"00000000";
-  constant xx07 : word := x"00000000";
-  constant xx08 : word := x"00000000";
-  constant xx09 : word := x"00000000";
-  constant xx10 : word := x"00000000";
-  constant xx11 : word := x"00000000";
-  constant xx12 : word := x"00000000";
-  constant xx13 : word := x"00000000";
-  constant xx14 : word := x"000000c0";
-  constant xx15 : word := x"00000000";
-
-  constant XXinit : dataset (0 to 15) := (
+  constant Xinit : dataset (0 to 15) := (
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000080", x"00000000");
   
-  signal Fxx : dataset (0 to 15) := XXinit;
-  signal Gxx : dataset (0 to 15) := XXinit;
-  signal Hxx : dataset (0 to 15) := XXinit;
-  signal Ixx : dataset (0 to 15) := XXinit;
+  signal Fx : dataset (0 to 15) := Xinit;
+  signal Gx : dataset (0 to 15) := Xinit;
+  signal Hx : dataset (0 to 15) := Xinit;
+  signal Ix : dataset (0 to 15) := Xinit;
+
+  constant iA : word := x"67452301";
+  constant iB : word := x"efcdab89";
+  constant iC : word := x"98badcfe";
+  constant iD : word := x"10325476";
 
   component delay is
     generic (na : integer; nb : integer);
@@ -309,168 +285,78 @@ architecture Behavioral of md5 is
   end component;
 
 begin
-  xx00 <= xxIN;
+  Fx(0) <= x01;
 
-  Fxx0d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  xx00, Qa=>  Fxx(0),
-              Db=>  xx01, Qb=>  Fxx(1), Clk=> Clk);
-  Fxx2d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  xx02, Qa=>  Fxx(2),
-              Db=>  xx03, Qb=>  Fxx(3), Clk=> Clk);
-  Fxx4d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  xx04, Qa=>  Fxx(4),
-              Db=>  xx05, Qb=>  Fxx(5), Clk=> Clk);
+  Fx0d: delay generic map(na=> 1, nb=>1)
+    port map (Da=>  x00,   Qa=>  open,  Db=>  x01, Qb=>  Fx(1), Clk=> Clk);
+  Fx2d: delay generic map(na=> 2, nb=>3)
+    port map (Da=>  x02,   Qa=>  Fx(2), Db=>  x03, Qb=>  Fx(3), Clk=> Clk);
+  Fx4d: delay generic map(na=> 4, nb=>5)
+    port map (Da=>  x04,   Qa=>  Fx(4), Db=>  x05, Qb=>  Fx(5), Clk=> Clk);
 
-  Gxx0d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Fxx(0), Qa=>  Gxx(0),
-              Db=>  Fxx(1), Qb=>  Gxx(1), Clk=> Clk);
-  Gxx2d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Fxx(2), Qa=>  Gxx(2),
-              Db=>  Fxx(3), Qb=>  Gxx(3), Clk=> Clk);
-  Gxx4d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Fxx(4), Qa=>  Gxx(4),
-              Db=>  Fxx(5), Qb=>  Gxx(5), Clk=> Clk);
+  Gx0d: delay generic map(na=> D12(0), nb=>D12(1))
+    port map (Da=>  Fx(0), Qa=>  Gx(0), Db=>  Fx(1), Qb=>  Gx(1), Clk=> Clk);
+  Gx2d: delay generic map(na=> D12(2), nb=>D12(3))
+    port map (Da=>  Fx(2), Qa=>  Gx(2), Db=>  Fx(3), Qb=>  Gx(3), Clk=> Clk);
+  Gx4d: delay generic map(na=> D12(4), nb=>D12(5))
+    port map (Da=>  Fx(4), Qa=>  Gx(4), Db=>  Fx(5), Qb=>  Gx(5), Clk=> Clk);
 
-  Hxx0d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Gxx(0), Qa=>  Hxx(0),
-              Db=>  Gxx(1), Qb=>  Hxx(1), Clk=> Clk);
-  Hxx2d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Gxx(2), Qa=>  Hxx(2),
-              Db=>  Gxx(3), Qb=>  Hxx(3), Clk=> Clk);
-  Hxx4d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Gxx(4), Qa=>  Hxx(4),
-              Db=>  Gxx(5), Qb=>  Hxx(5), Clk=> Clk);
+  Hx0d: delay generic map(na=> D23(0), nb=>D23(1))
+    port map (Da=>  Gx(0), Qa=>  Hx(0), Db=>  Gx(1), Qb=>  Hx(1), Clk=> Clk);
+  Hx2d: delay generic map(na=> D23(2), nb=>D23(3))
+    port map (Da=>  Gx(2), Qa=>  Hx(2), Db=>  Gx(3), Qb=>  Hx(3), Clk=> Clk);
+  Hx4d: delay generic map(na=> D23(4), nb=>D23(5))
+    port map (Da=>  Gx(4), Qa=>  Hx(4), Db=>  Gx(5), Qb=>  Hx(5), Clk=> Clk);
 
-  Ixx0d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Hxx(0), Qa=>  Ixx(0),
-              Db=>  Hxx(1), Qb=>  Ixx(1), Clk=> Clk);
-  Ixx2d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Hxx(2), Qa=>  Ixx(2),
-              Db=>  Hxx(3), Qb=>  Ixx(3), Clk=> Clk);
-  Ixx4d: delay generic map(na=> 5, nb=>5)
-    port map (Da=>  Hxx(4), Qa=>  Ixx(4),
-              Db=>  Hxx(5), Qb=>  Ixx(5), Clk=> Clk);
+  Ix0d: delay generic map(na=> D34(0), nb=>D34(1))
+    port map (Da=>  Hx(0), Qa=>  Ix(0), Db=>  Hx(1), Qb=>  Ix(1), Clk=> Clk);
+  Ix2d: delay generic map(na=> D34(2), nb=>D34(3))
+    port map (Da=>  Hx(2), Qa=>  Ix(2), Db=>  Hx(3), Qb=>  Ix(3), Clk=> Clk);
+  Ix4d: delay generic map(na=> D34(4), nb=>D34(5))
+    port map (Da=>  Hx(4), Qa=>  Ix(4), Db=>  Hx(5), Qb=>  Ix(5), Clk=> Clk);
+
+  A(0) <= iA;
+  B(0) <= iB;
+  C(0) <= iC;
+  D(0) <= iD;
 
   process (Clk)
-    variable partA : boolean;
-    variable kk1 : dataset (0 to 7);
-    variable kk2 : dataset (0 to 7);
-    variable kk3 : dataset (0 to 7);
-    variable kk4 : dataset (0 to 7);
-
-    variable Fx : dataset (0 to 7);
-    variable Gx : dataset (0 to 7);
-    variable Hx : dataset (0 to 7);
-    variable Ix : dataset (0 to 7);
-
   begin
     if Clk'event and Clk = '1' then
 
-      xx01 <= xx00;
-      xx02 <= xx01;
-      xx03 <= xx02;
-
-      -- setup for round 1.
-      A1(0) <= phasedCV (iA, A1(8));
-      B1(0) <= phasedCV (iB, B1(8));
-      C1(0) <= phasedCV (iC, C1(8));
-      D1(0) <= phasedCV (iD, D1(8));
-
-      for i in 0 to 3 loop
-        Fx (2*i  ) := phasedVC (Fxx((2*i)   mod 16), Fxx((2*i+8) mod 16));
-        Fx (2*i+1) := phasedCV (Fxx((2*i+9) mod 16), Fxx((2*i+1) mod 16));
-      end loop;
-
-      -- round 1.
-      for i in 0 to 7 loop
-        kk1(i) := phasedVVa (kk(i), kk(i + 8));
-
-        A1(i+1) <= D1(i);
-        B1(i+1) <= FF(A1(i), B1(i), C1(i), D1(i),
-                      Fx(i), S1(i mod 4), kk1(i));
-        C1(i+1) <= B1(i);
-        D1(i+1) <= C1(i);
-      end loop;
-
-      -- Setup for round 2.
-
-      A2(0) <= phasedVVb (A1(8), A2 (8));
-      B2(0) <= phasedVVb (B1(8), B2 (8));
-      C2(0) <= phasedVVb (C1(8), C2 (8));
-      D2(0) <= phasedVVb (D1(8), D2 (8));
-
-      for i in 0 to 3 loop
-        Gx (2*i  ) := phasedVC (Gxx((2*i)   mod 16), Gxx((2*i+8) mod 16));
-        Gx (2*i+1) := phasedCV (Gxx((2*i+9) mod 16), Gxx((2*i+1) mod 16));
+      -- Propagations.
+      for i in 0 to 63 loop
+        A(i+1) <= D(i);
+        C(i+1) <= B(i);
+        D(i+1) <= C(i);
       end loop;
       
+      -- round 1.
+      for i in 0 to 15 loop
+        B(i+1) <= FF(A(i), B(i), C(i), D(i), Fx(i), S1(i mod 4), kk(i));
+      end loop;
+
       -- Round 2
-      for i in 0 to 7 loop
-        kk2(i) := phasedVVb (kk(i+16), kk(i+24));
-
-        A2(i+1) <= D2(i);
-        B2(i+1) <= GG (A2(i), B2(i), C2(i), D2(i),
-                       Gx((i*5+1) mod 8), S2(i mod 4), kk2(i));
-        C2(i+1) <= B2(i);
-        D2(i+1) <= C2(i);
+      for i in 16 to 31 loop
+        B(i+1) <= GG (A(i), B(i), C(i), D(i), Gx ((i*5+1) mod 16), S2(i mod 4), kk(i));
       end loop;
 
-      -- Setup for round 3.
-
-      A3(0) <= phasedVVa (A2(8), A3(8));
-      B3(0) <= phasedVVa (B2(8), B3(8));
-      C3(0) <= phasedVVa (C2(8), C3(8));
-      D3(0) <= phasedVVa (D2(8), D3(8));
-
-      for i in 0 to 3 loop
-        Hx (2*i  ) := phasedVC (Hxx((2*i)   mod 16), Hxx((2*i+8) mod 16));
-        Hx (2*i+1) := phasedCV (Hxx((2*i+9) mod 16), Hxx((2*i+1) mod 16));
-      end loop;
 
       -- Round 3
-      for i in 0 to 7 loop
-        kk3(i) := phasedVVa (kk(i+32), kk(i+40));
-
-        A3(i+1) <= D3(i);
-        B3(i+1) <= HH (A3(i), B3(i), C3(i), D3(i),
-                       Hx((i*3+5) mod 8), S3(i mod 4), kk3(i));
-        C3(i+1) <= B3(i);
-        D3(i+1) <= C3(i);
+      for i in 32 to 47 loop
+        B(i+1) <= HH (A(i), B(i), C(i), D(i), Hx ((i*3+5) mod 16), S3(i mod 4), kk(i));
       end loop;
 
-      -- Setup for round 4.
-
-      A4(0) <= phasedVVb (A3(8), A4(8));
-      B4(0) <= phasedVVb (B3(8), B4(8));
-      C4(0) <= phasedVVb (C3(8), C4(8));
-      D4(0) <= phasedVVb (D3(8), D4(8));
-
-      for i in 0 to 7 loop
-        A4(i+1) <= D4(i);
-        C4(i+1) <= B4(i);
-        D4(i+1) <= C4(i);
-      end loop;
-
-      for i in 0 to 3 loop
-        Ix (2*i  ) := phasedVC (Ixx((2*i  ) mod 16), Ixx((2*i+8) mod 16));
-        Ix (2*i+1) := phasedCV (Ixx((2*i+9) mod 16), Ixx((2*i+1) mod 16));
-      end loop;
-      
       -- Round 4
-      for i in 0 to 7 loop
-        kk4(i) := phasedVVb (kk(i+48), kk(i+56));
-
-        A4(i+1) <= D4(i);
-        B4(i+1) <= II (A4(i), B4(i), C4(i), D4(i),
-                       Ix ((i*7) mod 8), S4(i mod 4), kk4(i));
-        C4(i+1) <= B4(i);
-        D4(i+1) <= C4(i);
+      for i in 48 to 63 loop
+        B(i+1) <= II (A(i), B(i), C(i), D(i),
+                      Ix ((i*7) mod 16), S4(i mod 4), kk(i));
       end loop;
       
-      Aout <= A4(8) + iA;
-      Bout <= B4(8) + iB;
-      Cout <= C4(8) + iC;
-      Dout <= D4(8) + iD;
+      Aout <= A(64) + iA;
+      Bout <= B(64) + iB;
+      Cout <= C(64) + iC;
+      Dout <= D(64) + iD;
     end if;
   end process;
 end Behavioral;

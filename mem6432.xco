@@ -1,7 +1,7 @@
 ##############################################################
 #
 # Xilinx Core Generator version K.39
-# Date: Wed Feb 25 07:34:28 2009
+# Date: Fri Mar 20 22:22:21 2009
 #
 ##############################################################
 #
@@ -18,13 +18,13 @@ SET asysymbol = True
 SET busformat = BusFormatAngleBracketNotRipped
 SET createndf = False
 SET designentry = VHDL
-SET device = xc3s500e
-SET devicefamily = spartan3e
+SET device = xc3sd1800a
+SET devicefamily = spartan3adsp
 SET flowvendor = Foundation_iSE
 SET formalverification = False
 SET foundationsym = False
 SET implementationfiletype = Ngc
-SET package = pq208
+SET package = fg676
 SET removerpms = False
 SET simulationfiles = Behavioral
 SET speedgrade = -4
@@ -74,5 +74,5 @@ CSET write_width_a=32
 CSET write_width_b=32
 # END Parameters
 GENERATE
-# CRC: d5ffe59a
+# CRC: a14c4e68
 
