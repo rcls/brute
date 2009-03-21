@@ -87,12 +87,12 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
 
 entity md5 is
-  Port (x00 : in  std_logic_vector (31 downto 0);
-        x01 : in  std_logic_vector (31 downto 0);
-        x02 : in  std_logic_vector (31 downto 0);
-        x03 : in  std_logic_vector (31 downto 0);
-        x04 : in  std_logic_vector (31 downto 0);
-        x05 : in  std_logic_vector (31 downto 0);
+  Port (x0 : in  std_logic_vector (31 downto 0);
+        x1 : in  std_logic_vector (31 downto 0);
+        x2 : in  std_logic_vector (31 downto 0);
+        x3 : in  std_logic_vector (31 downto 0);
+        x4 : in  std_logic_vector (31 downto 0);
+        x5 : in  std_logic_vector (31 downto 0);
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
@@ -279,9 +279,9 @@ architecture Behavioral of md5 is
   end component;
 
 begin
-  process (x00)
+  process (x0)
   begin
-    Fx(0) <= x00;
+    Fx(0) <= x0;
   end process;
   
   A(0) <= x"67452301";
@@ -290,11 +290,11 @@ begin
   D(0) <= x"10325476";
 
 --  Fx0d: delay generic map(na=> 1, nb=>1)
---    port map (Da=>  x00,   Qa=>  open,  Db=>  x01, Qb=>  Fx(1), Clk=> Clk);
+--    port map (Da=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
   Fx2d: delay generic map(na=> 2, nb=>3)
-    port map (Da=>  x02,   Qa=>  Fx(2), Db=>  x03, Qb=>  Fx(3), Clk=> Clk);
+    port map (Da=>  x2,   Qa=>  Fx(2), Db=>  x3, Qb=>  Fx(3), Clk=> Clk);
   Fx4d: delay generic map(na=> 4, nb=>5)
-    port map (Da=>  x04,   Qa=>  Fx(4), Db=>  x05, Qb=>  Fx(5), Clk=> Clk);
+    port map (Da=>  x4,   Qa=>  Fx(4), Db=>  x5, Qb=>  Fx(5), Clk=> Clk);
 
   Gx0d: delay generic map(na=> D12(0), nb=>D12(1))
     port map (Da=>  Fx(0), Qa=>  Gx(0), Db=>  Fx(1), Qb=>  Gx(1), Clk=> Clk);
@@ -321,7 +321,7 @@ begin
   begin
     if Clk'event and Clk = '1' then
 
-      Fx(1) <= x01; -- gives 1 cycle delay.
+      Fx(1) <= x1; -- gives 1 cycle delay.
       
       -- I don't see why these are necessary but the simulator seems to need
       -- them.

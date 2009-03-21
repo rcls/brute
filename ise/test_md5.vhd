@@ -32,41 +32,41 @@ end test_md5;
 
 architecture Behavioral of test_md5 is
    component md5 is
-    Port (x00 : in  std_logic_vector (31 downto 0);
-        x01 : in  std_logic_vector (31 downto 0);
-        x02 : in  std_logic_vector (31 downto 0);
-        x03 : in  std_logic_vector (31 downto 0);
-        x04 : in  std_logic_vector (31 downto 0);
-        x05 : in  std_logic_vector (31 downto 0);
+    Port (x0 : in  std_logic_vector (31 downto 0);
+        x1 : in  std_logic_vector (31 downto 0);
+        x2 : in  std_logic_vector (31 downto 0);
+        x3 : in  std_logic_vector (31 downto 0);
+        x4 : in  std_logic_vector (31 downto 0);
+        x5 : in  std_logic_vector (31 downto 0);
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
         Dout : out std_logic_vector (31 downto 0);
         Clk : in std_logic);
    end component;
-   signal x00 : std_logic_vector (31 downto 0);
-   signal x01 : std_logic_vector (31 downto 0);
-   signal x02 : std_logic_vector (31 downto 0);
-   signal x03 : std_logic_vector (31 downto 0);
-   signal x04 : std_logic_vector (31 downto 0);
-   signal x05 : std_logic_vector (31 downto 0);
+   signal x0 : std_logic_vector (31 downto 0);
+   signal x1 : std_logic_vector (31 downto 0);
+   signal x2 : std_logic_vector (31 downto 0);
+   signal x3 : std_logic_vector (31 downto 0);
+   signal x4 : std_logic_vector (31 downto 0);
+   signal x5 : std_logic_vector (31 downto 0);
    signal Aout : std_logic_vector (31 downto 0);
    signal Bout : std_logic_vector (31 downto 0);
    signal Cout : std_logic_vector (31 downto 0);
    signal Dout : std_logic_vector (31 downto 0);
    signal Clk : std_logic;
 begin
-   UUT : md5 port map (x00=>x00,
-   x01=>x01,x02=>x02,x03=>x03,Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk);
+   UUT : md5 port map (x0=>x0,
+   x1=>x1,x2=>x2,x3=>x3,Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk);
 
    process
    begin
-      x00 <= x"00000000";
-      x01 <= x"00000000";
-      x02 <= x"00000000";
-      x03 <= x"00000000";
-      x04 <= x"00000080";
-      x05 <= x"00000000";
+      x0 <= x"00000000";
+      x1 <= x"00000000";
+      x2 <= x"00000000";
+      x3 <= x"00000000";
+      x4 <= x"00000080";
+      x5 <= x"00000000";
       Clk <= '0';
       -- First, clock 100 times so that outputs settle.
       for i in 1 to 100 loop
@@ -76,20 +76,20 @@ begin
          wait for 1 us;
       end loop;
       -- Set some inputs and clock once.
-      x00 <= x"e040a4f0";
-      x01 <= x"7d4a91b5";
-      x02 <= x"694f8475";
-      x03 <= x"4e2443bc";
+      x0 <= x"e040a4f0";
+      x1 <= x"7d4a91b5";
+      x2 <= x"694f8475";
+      x3 <= x"4e2443bc";
       Clk <= '0';
       wait for 1 us;
       Clk <= '1';
       wait for 1 us;
 
       -- Now clock in zeros 100 times again.
-      --x00 <= x"00000000";
-      --x01 <= x"00000000";
-      --x02 <= x"00000000";
-      --x03 <= x"00000000";
+      --x0 <= x"00000000";
+      --x1 <= x"00000000";
+      --x2 <= x"00000000";
+      --x3 <= x"00000000";
       Clk <= '0';
       -- First, clock 100 times so that outputs settle.
       for i in 1 to 100 loop
