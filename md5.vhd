@@ -6,8 +6,9 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
 ---- Uncomment the following library declaration if instantiating
 ---- any Xilinx primitives in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
+library UNISIM;
+use UNISIM.VComponents.all;
+
 entity delay is
   generic (na : integer; nb : integer);
 
@@ -34,10 +35,16 @@ architecture Behavioral of delay is
       doutb: out std_logic_vector (31 downto 0));
   end component;
 
-  signal counta : std_logic_vector (4 downto 0);
-  signal countb : std_logic_vector (4 downto 0);
+  signal counta : std_logic_vector (4 downto 0) := "00000";
+  signal countb : std_logic_vector (4 downto 0) := "00000";
   signal addra : std_logic_vector (5 downto 0);
   signal addrb : std_logic_vector (5 downto 0);
+  
+  constant lima : std_logic_vector (4 downto 0) := conv_std_logic_vector (na - 2, 5);
+  constant limb : std_logic_vector (4 downto 0) := conv_std_logic_vector (nb - 2, 5);
+--  subtype word is std_logic_vector (31 downto 0);
+--  type mem_t is array (63 downto 0) of word;
+--  signal mem : mem_t;
 begin
   addra <= '0' & counta;
   addrb <= '1' & countb;
@@ -53,14 +60,18 @@ begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      if counta = conv_std_logic_vector (na-1, 5) then
+      --Qa <= mem (conv_integer (addra));
+      --mem (conv_integer (addra)) <= Da;
+      --Qb <= mem (conv_integer (addrb));
+      --mem (conv_integer (addrb)) <= Db;
+      
+      if counta = lima then
         counta <= "00000";
       else
         counta <= counta + 1;
       end if;
-    end if;
-    if Clk'event and Clk = '1' then
-      if countb = conv_std_logic_vector (nb-1, 5) then
+
+      if countb = limb then
         countb <= "00000";
       else
         countb <= countb + 1;
@@ -68,7 +79,7 @@ begin
     end if;
   end process;
 end Behavioral;
-  
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
@@ -80,6 +91,8 @@ entity md5 is
         x01 : in  std_logic_vector (31 downto 0);
         x02 : in  std_logic_vector (31 downto 0);
         x03 : in  std_logic_vector (31 downto 0);
+        x04 : in  std_logic_vector (31 downto 0);
+        x05 : in  std_logic_vector (31 downto 0);
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
@@ -87,10 +100,6 @@ entity md5 is
         Clk : in std_logic);
 end md5;
 
---#define F(x, y, z) OR (AND ((x), (y)), ANDN ((x), (z)))
---#define G(x, y, z) OR (AND ((z), (x)), ANDN ((z), (y)))
---#define H(x, y, z) XOR ((x), XOR ((y), (z)))
---#define I(x, y, z) XOR ((y), OR ((x), NOT ((z))))
 
 architecture Behavioral of md5 is
   subtype word is std_logic_vector (31 downto 0);
@@ -122,37 +131,34 @@ architecture Behavioral of md5 is
     x"6fa87e4f", x"fe2ce6e0", x"a3014314", x"4e0811a1",
     x"f7537e82", x"bd3af235", x"2ad7d2bb", x"eb86d391");
   
---alias u32 is std_logic_vector;
-
   function F(x : word; y : word; z : word)
     return word is
+    variable r : word := (x and y) or (z and not x);
   begin
-    return (x and y) or (x and not z);
+    return r;
   end F;
 
   function G(x : word; y : word; z : word)
     return word is
+    variable r : word := (z and x) or (y and not z);
   begin
-    return (z and x) or (z and not y);
+    return r;
   end G;
 
   function H(x : word; y : word; z : word)
     return word is
+    variable r : word := x xor y xor z;
   begin
-    return x xor y xor z;
+    return r;
   end H;
 
   function I(x : word; y : word; z : word)
     return word is
+    variable r : word := y xor (x or not z);
   begin
-    return y xor (x or not z);
+    return r;
   end I;
 
---#define GENERATE(FUN,a, b, c, d, x, s, ac) {		\
---	(a) = A4 ((a), FUN ((b), (c), (d)), (x), DIAG (ac));	\
---	(a) = ROTATE_LEFT ((a), (s));			\
---        (a) = ADD ((a), (b));				\
---    }
   function FF(a : word;
               b : word;
               c : word;
@@ -160,6 +166,7 @@ architecture Behavioral of md5 is
               x : word;
               s : integer;
               ac : word) return word is
+--    constant r : word := to_stdlogicvector (to_bitvector (a + F(b,c,d) + x + ac) rol s) + b;
   begin
     return to_stdlogicvector (to_bitvector (a + F(b,c,d) + x + ac) rol s) + b;
   end FF;
@@ -238,28 +245,15 @@ architecture Behavioral of md5 is
   begin
     return U4(i) - U3(i);
   end;
-    
+  
   signal A : dataset (0 to 64);
   signal B : dataset (0 to 64);
   signal C : dataset (0 to 64);
   signal D : dataset (0 to 64);
 
-  constant x04 : word := x"00000080";
-  constant x05 : word := x"00000000";
-  constant x06 : word := x"00000000";
-  constant x07 : word := x"00000000";
-  constant x08 : word := x"00000000";
-  constant x09 : word := x"00000000";
-  constant x10 : word := x"00000000";
-  constant x11 : word := x"00000000";
-  constant x12 : word := x"00000000";
-  constant x13 : word := x"00000000";
-  constant x14 : word := x"000000c0";
-  constant x15 : word := x"00000000";
-
   constant Xinit : dataset (0 to 15) := (
     x"00000000", x"00000000", x"00000000", x"00000000",
-    x"00000000", x"00000000", x"00000000", x"00000000",
+    x"00000080", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000080", x"00000000");
   
@@ -285,10 +279,18 @@ architecture Behavioral of md5 is
   end component;
 
 begin
-  Fx(0) <= x01;
+  process (x00)
+  begin
+    Fx(0) <= x00;
+  end process;
+  
+  A(0) <= x"67452301";
+  B(0) <= x"efcdab89";
+  C(0) <= x"98badcfe";
+  D(0) <= x"10325476";
 
-  Fx0d: delay generic map(na=> 1, nb=>1)
-    port map (Da=>  x00,   Qa=>  open,  Db=>  x01, Qb=>  Fx(1), Clk=> Clk);
+--  Fx0d: delay generic map(na=> 1, nb=>1)
+--    port map (Da=>  x00,   Qa=>  open,  Db=>  x01, Qb=>  Fx(1), Clk=> Clk);
   Fx2d: delay generic map(na=> 2, nb=>3)
     port map (Da=>  x02,   Qa=>  Fx(2), Db=>  x03, Qb=>  Fx(3), Clk=> Clk);
   Fx4d: delay generic map(na=> 4, nb=>5)
@@ -315,14 +317,18 @@ begin
   Ix4d: delay generic map(na=> D34(4), nb=>D34(5))
     port map (Da=>  Hx(4), Qa=>  Ix(4), Db=>  Hx(5), Qb=>  Ix(5), Clk=> Clk);
 
-  A(0) <= iA;
-  B(0) <= iB;
-  C(0) <= iC;
-  D(0) <= iD;
-
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
+
+      Fx(1) <= x01; -- gives 1 cycle delay.
+      
+      -- I don't see why these are necessary but the simulator seems to need
+      -- them.
+      A(0) <= x"67452301";
+      B(0) <= x"efcdab89";
+      C(0) <= x"98badcfe";
+      D(0) <= x"10325476";
 
       -- Propagations.
       for i in 0 to 63 loop
@@ -333,7 +339,7 @@ begin
       
       -- round 1.
       for i in 0 to 15 loop
-        B(i+1) <= FF(A(i), B(i), C(i), D(i), Fx(i), S1(i mod 4), kk(i));
+        B(i+1) <= FF (A(i), B(i), C(i), D(i), Fx(i), S1(i mod 4), kk(i));
       end loop;
 
       -- Round 2

@@ -1,9 +1,8 @@
 
-include ../Rules.mk
-
-CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64 -Wall -Winline -Werror -std=gnu99 -fomit-frame-pointer -fsched-stalled-insns=100000 -fsched-stalled-insns-dep=100000 -fpredictive-commoning --param salias-max-array-elements=10 --param max-pending-list-length=100000
+CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64 -Wall -Winline -Werror -std=gnu99 
 
 
+md5log: /usr/lib64/libm.so
 
 all: brute
 
