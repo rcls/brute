@@ -56,8 +56,8 @@ architecture Behavioral of test_md5 is
    signal Dout : std_logic_vector (31 downto 0);
    signal Clk : std_logic;
 begin
-   UUT : md5 port map (x0=>x0,
-   x1=>x1,x2=>x2,x3=>x3,Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk);
+   UUT : md5 port map (x0=>x0,x1=>x1,x2=>x2,x3=>x3,x4=>x4,x5=>x5,
+   Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk);
 
    process
    begin

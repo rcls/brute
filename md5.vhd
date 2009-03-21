@@ -20,50 +20,24 @@ entity delay is
 end delay;
 
 architecture Behavioral of delay is
-  component mem6432 IS
-    port (
-      clka: in std_logic;
-      dina: in std_logic_vector (31 downto 0);
-      addra: in std_logic_vector (5 downto 0);
-      wea: in std_logic_vector (0 downto 0);
-      douta: out std_logic_vector (31 downto 0);
-      
-      clkb: in std_logic;
-      dinb: in std_logic_vector (31 downto 0);
-      addrb: in std_logic_vector (5 downto 0);
-      web: in std_logic_vector (0 downto 0);
-      doutb: out std_logic_vector (31 downto 0));
-  end component;
-
   signal counta : std_logic_vector (4 downto 0) := "00000";
   signal countb : std_logic_vector (4 downto 0) := "00000";
-  signal addra : std_logic_vector (5 downto 0);
-  signal addrb : std_logic_vector (5 downto 0);
   
   constant lima : std_logic_vector (4 downto 0) := conv_std_logic_vector (na - 2, 5);
   constant limb : std_logic_vector (4 downto 0) := conv_std_logic_vector (nb - 2, 5);
---  subtype word is std_logic_vector (31 downto 0);
---  type mem_t is array (63 downto 0) of word;
---  signal mem : mem_t;
+
+  subtype word is std_logic_vector (31 downto 0);
+  type mem_t is array (31 downto 0) of word;
+  signal mema : mem_t;
+  signal memb : mem_t;
 begin
-  addra <= '0' & counta;
-  addrb <= '1' & countb;
-  mem : mem6432 port map (clka => clk,
-                          dina => Da, douta => Qa,
-                          wea => "1",
-                          addra => addra,
-                          
-                          clkb => clk,
-                          dinb => Db, doutb => Qb,
-                          web => "1",
-                          addrb => addrb);
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      --Qa <= mem (conv_integer (addra));
-      --mem (conv_integer (addra)) <= Da;
-      --Qb <= mem (conv_integer (addrb));
-      --mem (conv_integer (addrb)) <= Db;
+      Qa <= mema (conv_integer (counta));
+      mema (conv_integer (counta)) <= Da;
+      Qb <= memb (conv_integer (countb));
+      memb (conv_integer (countb)) <= Db;
       
       if counta = lima then
         counta <= "00000";
