@@ -36,6 +36,8 @@ architecture Behavioral of test_md5 is
         x01 : in  std_logic_vector (31 downto 0);
         x02 : in  std_logic_vector (31 downto 0);
         x03 : in  std_logic_vector (31 downto 0);
+        x04 : in  std_logic_vector (31 downto 0);
+        x05 : in  std_logic_vector (31 downto 0);
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
@@ -46,6 +48,8 @@ architecture Behavioral of test_md5 is
    signal x01 : std_logic_vector (31 downto 0);
    signal x02 : std_logic_vector (31 downto 0);
    signal x03 : std_logic_vector (31 downto 0);
+   signal x04 : std_logic_vector (31 downto 0);
+   signal x05 : std_logic_vector (31 downto 0);
    signal Aout : std_logic_vector (31 downto 0);
    signal Bout : std_logic_vector (31 downto 0);
    signal Cout : std_logic_vector (31 downto 0);
@@ -61,6 +65,8 @@ begin
       x01 <= x"00000000";
       x02 <= x"00000000";
       x03 <= x"00000000";
+      x04 <= x"00000080";
+      x05 <= x"00000000";
       Clk <= '0';
       -- First, clock 100 times so that outputs settle.
       for i in 1 to 100 loop
