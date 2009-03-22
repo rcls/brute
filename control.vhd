@@ -9,9 +9,8 @@ library UNISIM;
 use UNISIM.VComponents.all;
 
 entity control is
-  port (Clk : std_logic);
-  attribute loc : string;
-  attribute loc of Clk : signal is "P26";
+  port (Clk : in std_logic);
+  port (LED : out std_logic_vector (7 downto 0);
 end control;
 
 architecture Behavioral of control is
@@ -192,6 +191,9 @@ begin
     end if;
   end process;
 
+  -- Nice LEDs
+  LED <= hit_idx;
+  
   -- Read the hit_ram.
   process (Clk)
   begin
