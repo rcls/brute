@@ -67,6 +67,7 @@ entity md5 is
         x3 : in  std_logic_vector (31 downto 0);
         x4 : in  std_logic_vector (31 downto 0);
         x5 : in  std_logic_vector (31 downto 0);
+        A64 : out std_logic_vector (31 downto 0);
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
@@ -253,15 +254,21 @@ architecture Behavioral of md5 is
   end component;
 
 begin
-  process (x0)
-  begin
-    Fx(0) <= x0;
-  end process;
+  Fx(0) <= x0;
   
-  A(0) <= x"67452301";
-  B(0) <= x"efcdab89";
-  C(0) <= x"98badcfe";
-  D(0) <= x"10325476";
+  A(0) <= iA;
+  B(0) <= iB;
+  C(0) <= iC;
+  D(0) <= iD;
+
+  -- Early access to output for comparator.
+  A64 <= A(64);
+      
+  -- The actual outputs; let our user do the registering.
+  Aout <= A(64) + iA;
+  Bout <= B(64) + iB;
+  Cout <= C(64) + iC;
+  Dout <= D(64) + iD;
 
 --  Fx0d: delay generic map(na=> 1, nb=>1)
 --    port map (Da=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
@@ -299,10 +306,10 @@ begin
       
       -- I don't see why these are necessary but the simulator seems to need
       -- them.
-      A(0) <= x"67452301";
-      B(0) <= x"efcdab89";
-      C(0) <= x"98badcfe";
-      D(0) <= x"10325476";
+      A(0) <= iA;
+      B(0) <= iB;
+      C(0) <= iC;
+      D(0) <= iD;
 
       -- Propagations.
       for i in 0 to 63 loop
@@ -321,7 +328,6 @@ begin
         B(i+1) <= GG (A(i), B(i), C(i), D(i), Gx ((i*5+1) mod 16), S2(i mod 4), kk(i));
       end loop;
 
-
       -- Round 3
       for i in 32 to 47 loop
         B(i+1) <= HH (A(i), B(i), C(i), D(i), Hx ((i*3+5) mod 16), S3(i mod 4), kk(i));
@@ -332,11 +338,6 @@ begin
         B(i+1) <= II (A(i), B(i), C(i), D(i),
                       Ix ((i*7) mod 16), S4(i mod 4), kk(i));
       end loop;
-      
-      Aout <= A(64) + iA;
-      Bout <= B(64) + iB;
-      Cout <= C(64) + iC;
-      Dout <= D(64) + iD;
     end if;
   end process;
 end Behavioral;
