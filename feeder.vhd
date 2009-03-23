@@ -131,7 +131,8 @@ begin
       x5( 7 downto  0) <= hexify (load2 (19 downto 16));
       x5(15 downto  8) <= hexify (load2 (23 downto 20));
       x5(23 downto 16) <= hexify (load2 (27 downto 24));
-      x5(31 downto 24) <= hexify (load2 (31 downto 28));
+      x5(31 downto 24) <= x"80";
+      --x5(31 downto 24) <= hexify (load2 (31 downto 28));
     end if;
   end process;
 end Behavioral;

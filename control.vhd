@@ -9,8 +9,8 @@ library UNISIM;
 use UNISIM.VComponents.all;
 
 entity control is
-  port (Clk : in std_logic);
-  port (LED : out std_logic_vector (7 downto 0);
+  port (Clk_125MHz : in std_logic;
+         LED : out std_logic_vector (7 downto 0));
 end control;
 
 architecture Behavioral of control is
@@ -30,6 +30,10 @@ architecture Behavioral of control is
           TDO1 : in STD_ULOGIC;
           TDO2 : in STD_ULOGIC);
   end component; 
+
+  component Clock
+  port (CLKIN_IN : in STD_LOGIC; CLKFX_OUT : out STD_LOGIC);
+  end component;
 
   signal jtag_tck : std_logic;
   signal jtag_tms : std_logic;
@@ -61,6 +65,8 @@ architecture Behavioral of control is
           
           Clk : in std_logic);
   end component;
+
+  signal Clk : std_logic;
 
   signal f_load : std_logic;
   signal f_load0 : word_t;
@@ -123,6 +129,10 @@ begin
       TDO1 => jtag_tdo1,          -- Data input for USER1 function
       TDO2 => jtag_tdo2           -- Data input for USER2 function
       );
+
+   clock_inst : clock port map (
+      CLKFX_OUT => Clk,
+      CLKIN_IN => Clk_125MHz);
 
   -- The outputs; the jtag unit seems to take care of latching on falling TCK.
   jtag_tdo1 <= command (0);
