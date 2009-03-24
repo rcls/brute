@@ -231,8 +231,7 @@ begin
   begin
     case command (151 downto 144) is
       when x"03" => result <= hit_ram_o;
-      when x"04" => result <= global_count_latch & x"000000000000000000000000";
-      when others => result <= x"000000000000000000000000000000000000";
+      when others => result <= x"000000000000000000000000" & global_count_latch;
     end case;
   end process;
 end Behavioral;
