@@ -90,12 +90,13 @@ static unsigned char * append_tms (unsigned char * p, bool bit)
 static unsigned char * append_nq (unsigned char * p,
                                   uint64_t data, int bits, bool last)
 {
-    for (int i = 0; i != bits; ++i) {
-        p[0] = ((data >> i) & 1) * MASK_TDI;
-        if (last && i + 1 == bits)
+    for (int i = 1; i <= bits; ++i) {
+        p[0] = '0' + (data & 1) * MASK_TDI;
+        if (last && i == bits)
             p[0] |= MASK_TMS;
         p[1] = p[0] + MASK_TCK;
         p += 2;
+        data >>= 1;
     }
     return p;
 }
@@ -106,7 +107,8 @@ static unsigned char * append_ir (unsigned char * p, int comm)
     p = append_tms (p, 1);              // to select-dr-scan.
     p = append_tms (p, 1);              // select-ir-scan.
     p = append_tms (p, 0);              // capture-ir.
-    p = append_nq (p, comm, 6, true);  // ends in exit1-ir.
+    p = append_tms (p, 0);              // shift-ir.
+    p = append_nq (p, comm, 6, true);   // ends in exit1-ir.
     p = append_tms (p, 1);              // to update-ir.
     p = append_tms (p, 0);              // to runtest-idle.
 
@@ -138,6 +140,7 @@ static void write_read (unsigned char * buf,
 
     p = append_tms (p, 1);              // to select-dr-scan.
     p = append_tms (p, 0);              // capture-dr.
+    p = append_tms (p, 0);              // shift-dr.
 
     for (int i = 1; i <= count; ++i) {
         p[0] = '0';
@@ -166,6 +169,7 @@ static void load_md5 (uint64_t clock,
 
     p = append_tms (p, 1);              // to select-dr-scan.
     p = append_tms (p, 0);              // capture-dr.
+    p = append_tms (p, 0);              // shift-dr.
 
     // Send the 3 words.
     p = append_nq (p, load0, 32, false);
@@ -191,6 +195,7 @@ static void sample_md5 (uint64_t clock)
 
     p = append_tms (p, 1);              // to select-dr-scan.
     p = append_tms (p, 0);              // capture-dr.
+    p = append_tms (p, 0);              // shift-dr.
 
     // The clock.
     p = append_nq (p, clock, 48, false);
@@ -212,6 +217,7 @@ static void read_result (int location, uint64_t * clock, uint32_t data[3])
 
     p = append_tms (p, 1);              // to select-dr-scan.
     p = append_tms (p, 0);              // capture-dr.
+    p = append_tms (p, 0);              // shift-dr.
 
     p = append_nq (p, location, 8, false); // location.
     p = append_nq (p, op_read_result, 8, true);
@@ -238,16 +244,45 @@ static uint64_t read_clock (void)
 
     p = append_tms (p, 1);              // to select-dr-scan.
     p = append_tms (p, 0);              // capture-dr.
+    p = append_tms (p, 0);              // shift-dr.
 
-    p = append_nq (p, op_read_clock, 8, true);
-
-    p = append_nq (p, op_sample_md5, 8, true); // ends in exit1-dr.
+    p = append_nq (p, op_read_clock, 8, true); // ends in exit1-dr.
     p = append_tms (p, 1);                   // update-ir.
     p = append_tms (p, 0);                   // runtest-idle.
 
-    write_read (obuf, p, 48);
+    //write_read (obuf, p, 48);
+    write_read (obuf, p, 144);
 
-    return parse_bits (obuf, 48);
+    return parse_bits (obuf + 96, 48);
+}
+
+
+static uint32_t read_id (void)
+{
+    unsigned char obuf[2048];
+    unsigned char * p = obuf;
+
+    p = append_ir (p, 9);
+    p = append_tms (p, 1);              // to select-dr-scan.
+    p = append_tms (p, 0);              // capture-dr.
+    p = append_tms (p, 0);              // shift-dr.
+
+    for (int i = 1; i <= 32; ++i) {
+        p[0] = '0';
+        if (i == 32)
+            p[0] |= MASK_TMS;
+        p[1] = '\n';
+        p[2] = p[0] + MASK_TCK;
+        p += 3;
+    }
+
+    p = append_tms (p, 1);                   // update-ir.
+    p = append_tms (p, 0);                   // runtest-idle.
+
+    write_data (obuf, p);
+    read_data (obuf, 32);
+
+    return parse_bits (obuf, 32);
 }
 
 
@@ -258,6 +293,7 @@ static void jtag_reset (void)
     for (int i = 0; i != 6; ++i)
         p = append_tms (p, 1);
     p = append_tms (p, 0);              // runtest - idle.
+    write_data (obuf, p);
 }
 
 
@@ -292,14 +328,13 @@ static void open_serial (void)
         perror_exit ("tcflush failed");
 }
 
-
 void yeah(void)
 {
     load_md5 (0,0,0,0);
-    uint64_t clock;
-    uint32_t data[3];
-    read_result (0, &clock, data);
-    sample_md5 (0);
+/*     uint64_t clock; */
+/*     uint32_t data[3]; */
+/*     read_result (0, &clock, data); */
+/*     sample_md5 (0); */
 }
 
 
@@ -308,17 +343,20 @@ int main()
     open_serial();
     jtag_reset();
 
+    printf ("ID Code is %08x\n", read_id());
+
     uint64_t clock1 = read_clock();
 
-    // About 0.5 second.
-    sample_md5 (clock1 + 25000000 / 2);
+    // About 50 ms.
+    sample_md5 (clock1 + 2500000 / 2);
 
-    sleep (1);
+    usleep (100000);
 
-    // About 1.5 seconds.
-    sample_md5 (clock1 + 25000000 + 249999975);
+    // About 150 ms.
+    sample_md5 (clock1 + 2500000 / 2 + 2499965);
 
-    sleep (1);
+    usleep (100000);
+//    sleep (1);
 
     uint64_t clock2 = read_clock();
 
@@ -328,8 +366,8 @@ int main()
         uint64_t clock;
         uint32_t data[3];
         read_result (i, &clock, data);
-        printf ("%12lu %08x %08x %08x %s\n",
-                clock, data[0], data[1], data[2],
+        printf ("%12lu %08x %08x %08x [%lu]%s\n",
+                clock, data[0], data[1], data[2], clock % 65,
                 (clock1 <= clock && clock <= clock2) ? " *" : "");
     }
 

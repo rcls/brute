@@ -4,6 +4,8 @@ CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64
 
 md5log: /usr/lib64/libm.so
 
+check: /usr/lib64/libcrypto.so
+
 all: brute
 
 brute: brute.o -lpthread
