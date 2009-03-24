@@ -79,32 +79,34 @@ architecture Behavioral of control is
   signal f_hitC : word_t;
   signal f_hitD : word_t;
   
-  subtype dat144_t is std_logic_vector (143 downto 0);
-
+  subtype vector_144 is std_logic_vector (143 downto 0);
+  subtype vector_152 is std_logic_vector (151 downto 0);
+  
   -- 152 bit shift register attached to user1.  8 bit opcode plus 144 bits
-  -- data.  Input from jtag to us only.
+  -- data.
   -- opcode 1 : load md5 - 48 bit clock count + 96 bits data.
   -- opcode 2 : sample md5 - 48 bit clock count
   -- opcode 3 : read result + 8 bit address
   -- opcode 4 : read clock count
-  signal command : std_logic_vector (151 downto 0);
+  signal command : vector_152;
   signal command_valid : std_logic := '0';
   -- Detect rising edge with "01" and falling by "10"; we're crossing
   -- clock domains.
   signal command_edge : std_logic_vector (1 downto 0) := "00";
-  
+
   -- 144 bit shift register attached to user2.  Result data.  Output from us
   -- to jtag only.
-  signal result_sr : dat144_t;
+  --signal result_sr : vector_144;
 
-  -- The result loaded into result_sr in the appropriate capture_dr state.
-  signal result : dat144_t;
+  -- The result loaded into the jtag register in the appropriate capture_dr
+  -- state.
+  signal result : vector_152;
 
   -- The dual ported hit ram.
-  type hit_ram_t is array (255 downto 0) of dat144_t;
+  type hit_ram_t is array (255 downto 0) of vector_144;
   signal hit_ram : hit_ram_t;
   -- Output buffer the bram needs.
-  signal hit_ram_o : dat144_t;
+  signal hit_ram_o : vector_144;
   -- The hit ram allocation counter.
   signal hit_idx : std_logic_vector (7 downto 0);
 
@@ -136,7 +138,6 @@ begin
 
   -- The outputs; the jtag unit seems to take care of latching on falling TCK.
   jtag_tdo1 <= command (0);
-  jtag_tdo2 <= result_sr (0);
 
   process (jtag_tck)
   begin
@@ -148,16 +149,15 @@ begin
         end if;
         if jtag_capture = '1' then
           command_valid <= '0';
+          -- If the previous command was a read-result then grab the data out
+          -- of the hit-ram.  Else grab the latched clock.
+          if command (151 downto 144) = x"03" then
+            command <= x"00" & hit_ram_o;
+          else
+            command <= x"00000000000000000000000000" & global_count_latch;
+          end if;
         elsif jtag_update = '1' then
           command_valid <= '1';
-        end if;
-      end if;
-
-      if jtag_sel2 = '1' then
-        if jtag_capture = '1' then
-          result_sr <= result;
-        elsif jtag_shift = '1' then
-          result_sr <= jtag_tdi & result_sr (143 downto 1);
         end if;
       end if;
     end if;
@@ -173,21 +173,19 @@ begin
     end if;
   end process;
 
-  f : feeder port map (
-    load => f_load,
-    load0 => f_load0,
-    load1 => f_load1,
-    load2 => f_load2,
+  f : feeder port map (load => f_load,
+                       load0 => f_load0,
+                       load1 => f_load1,
+                       load2 => f_load2,
 
-    hit => f_hit,
+                       hit => f_hit,
 
-    hitA => f_hitA,
-    hitB => f_hitB,
-    hitC => f_hitC,
-    hitD => f_hitD,
+                       hitA => f_hitA,
+                       hitB => f_hitB,
+                       hitC => f_hitC,
+                       hitD => f_hitD,
 
-    Clk => Clk
-    );
+                       Clk => Clk);
 
   -- Write into the hit ram.
   process (Clk)
@@ -225,13 +223,4 @@ begin
   f_load0 <= command (31 downto 0);
   f_load1 <= command (63 downto 32);
   f_load2 <= command (95 downto 64);
-  
-  -- Select the result.
-  process (command, hit_ram_o, global_count_latch)
-  begin
-    case command (151 downto 144) is
-      when x"03" => result <= hit_ram_o;
-      when others => result <= x"000000000000000000000000" & global_count_latch;
-    end case;
-  end process;
 end Behavioral;
