@@ -80,7 +80,6 @@ architecture Behavioral of control is
   signal f_hitD : word_t;
   
   subtype vector_144 is std_logic_vector (143 downto 0);
-  subtype vector_152 is std_logic_vector (151 downto 0);
   
   -- 152 bit shift register attached to user1.  8 bit opcode plus 144 bits
   -- data.
@@ -88,19 +87,11 @@ architecture Behavioral of control is
   -- opcode 2 : sample md5 - 48 bit clock count
   -- opcode 3 : read result + 8 bit address
   -- opcode 4 : read clock count
-  signal command : vector_152;
+  signal command : std_logic_vector (151 downto 0);
   signal command_valid : std_logic := '0';
   -- Detect rising edge with "01" and falling by "10"; we're crossing
   -- clock domains.
   signal command_edge : std_logic_vector (1 downto 0) := "00";
-
-  -- 144 bit shift register attached to user2.  Result data.  Output from us
-  -- to jtag only.
-  --signal result_sr : vector_144;
-
-  -- The result loaded into the jtag register in the appropriate capture_dr
-  -- state.
-  signal result : vector_152;
 
   -- The dual ported hit ram.
   type hit_ram_t is array (255 downto 0) of vector_144;
