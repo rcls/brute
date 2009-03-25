@@ -22,7 +22,7 @@ end delay;
 architecture Behavioral of delay is
   signal counta : std_logic_vector (4 downto 0) := "00000";
   signal countb : std_logic_vector (4 downto 0) := "00000";
-  
+
   constant lima : std_logic_vector (4 downto 0) := conv_std_logic_vector (na - 2, 5);
   constant limb : std_logic_vector (4 downto 0) := conv_std_logic_vector (nb - 2, 5);
 
@@ -38,7 +38,7 @@ begin
       mema (conv_integer (counta)) <= Da;
       Qb <= memb (conv_integer (countb));
       memb (conv_integer (countb)) <= Db;
-      
+
       if counta = lima then
         counta <= "00000";
       else
@@ -78,11 +78,11 @@ end md5;
 
 architecture Behavioral of md5 is
   subtype word is std_logic_vector (31 downto 0);
-  
+
   type dataset is array (natural range <>) of word;
 
   type iarray is array (natural range <>) of integer;
-  
+
   constant S1 : iarray (0 to 3) := (7, 12, 17, 22);
   constant S2 : iarray (0 to 3) := (5, 9, 14, 20);
   constant S3 : iarray (0 to 3) := (4, 11, 16, 23);
@@ -105,7 +105,7 @@ architecture Behavioral of md5 is
     x"655b59c3", x"8f0ccc92", x"ffeff47d", x"85845dd1",
     x"6fa87e4f", x"fe2ce6e0", x"a3014314", x"4e0811a1",
     x"f7537e82", x"bd3af235", x"2ad7d2bb", x"eb86d391");
-  
+
   function F(x : word; y : word; z : word)
     return word is
     variable r : word := (x and y) or (z and not x);
@@ -145,7 +145,7 @@ architecture Behavioral of md5 is
   begin
     return to_stdlogicvector (to_bitvector (a + F(b,c,d) + x + ac) rol s) + b;
   end FF;
-  
+
   function GG(a : word;
               b : word;
               c : word;
@@ -156,7 +156,7 @@ architecture Behavioral of md5 is
   begin
     return to_stdlogicvector (to_bitvector (a + G(b,c,d) + x + ac) rol s) + b;
   end GG;
-  
+
   function HH(a : word;
               b : word;
               c : word;
@@ -167,7 +167,7 @@ architecture Behavioral of md5 is
   begin
     return to_stdlogicvector (to_bitvector (a + H(b,c,d) + x + ac) rol s) + b;
   end HH;
-  
+
   function II(a : word;
               b : word;
               c : word;
@@ -190,19 +190,19 @@ architecture Behavioral of md5 is
   begin
     return 16 + (13 * i + 3) mod 16;
   end;
-  
+
   -- Return the stage at which input #i is used in round 3.
   function U3 (i : integer) return integer is
   begin
     return 32 + (11 * i + 9) mod 16;
   end;
-  
+
   -- Return the stage at which input #i is used in round 4.
   function U4 (i : integer) return integer is
   begin
     return 48 + (7 * i) mod 16;
   end;
-  
+
   -- Round 1 to round 2 delay.
   function D12 (i : integer) return integer is
   begin
@@ -220,7 +220,7 @@ architecture Behavioral of md5 is
   begin
     return U4(i) - U3(i);
   end;
-  
+
   signal A : dataset (0 to 64);
   signal B : dataset (0 to 64);
   signal C : dataset (0 to 64);
@@ -230,8 +230,8 @@ architecture Behavioral of md5 is
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000000", x"00000000",
-    x"00000000", x"00000000", x"000000b8", x"00000000");
-  
+    x"00000000", x"00000000", x"00000088", x"00000000");
+
   signal Fx : dataset (0 to 15) := Xinit;
   signal Gx : dataset (0 to 15) := Xinit;
   signal Hx : dataset (0 to 15) := Xinit;
@@ -255,7 +255,7 @@ architecture Behavioral of md5 is
 
 begin
   Fx(0) <= x0;
-  
+
   A(0) <= iA;
   B(0) <= iB;
   C(0) <= iC;
@@ -263,7 +263,7 @@ begin
 
   -- Early access to output for comparator.
   A64 <= A(64);
-      
+
   -- The actual outputs; let our user do the registering.
   Aout <= A(64) + iA;
   Bout <= B(64) + iB;
@@ -303,7 +303,7 @@ begin
     if Clk'event and Clk = '1' then
 
       Fx(1) <= x1; -- gives 1 cycle delay.
-      
+
       -- I don't see why these are necessary but the simulator seems to need
       -- them.
       A(0) <= iA;
@@ -317,7 +317,7 @@ begin
         C(i+1) <= B(i);
         D(i+1) <= C(i);
       end loop;
-      
+
       -- round 1.
       for i in 0 to 15 loop
         B(i+1) <= FF (A(i), B(i), C(i), D(i), Fx(i), S1(i mod 4), kk(i));

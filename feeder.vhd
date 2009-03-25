@@ -13,14 +13,14 @@ entity feeder is
         load0 : in std_logic_vector (31 downto 0);
         load1 : in std_logic_vector (31 downto 0);
         load2 : in std_logic_vector (31 downto 0);
-        
+
         hit : out std_logic;
 
         hitA : out std_logic_vector (31 downto 0);
         hitB : out std_logic_vector (31 downto 0);
         hitC : out std_logic_vector (31 downto 0);
         hitD : out std_logic_vector (31 downto 0);
-        
+
         Clk : in std_logic);
 end feeder;
 
@@ -85,7 +85,7 @@ begin
   hitB <= Bout;
   hitC <= Cout;
   hitD <= Dout;
-  
+
   -- Feed through results to input.
   process (Clk)
     variable next0 : word_t;
@@ -107,31 +107,34 @@ begin
       x0(15 downto  8) <= hexify (next0 ( 7 downto  4));
       x0(23 downto 16) <= hexify (next0 (11 downto  8));
       x0(31 downto 24) <= hexify (next0 (15 downto 12));
-      
+
       x1( 7 downto  0) <= hexify (next0 (19 downto 16));
       x1(15 downto  8) <= hexify (next0 (23 downto 20));
       x1(23 downto 16) <= hexify (next0 (27 downto 24));
       x1(31 downto 24) <= hexify (next0 (31 downto 28));
-      
+
       x2( 7 downto  0) <= hexify (next1 ( 3 downto  0));
       x2(15 downto  8) <= hexify (next1 ( 7 downto  4));
       x2(23 downto 16) <= hexify (next1 (11 downto  8));
       x2(31 downto 24) <= hexify (next1 (15 downto 12));
-      
+
       x3( 7 downto  0) <= hexify (next1 (19 downto 16));
       x3(15 downto  8) <= hexify (next1 (23 downto 20));
       x3(23 downto 16) <= hexify (next1 (27 downto 24));
       x3(31 downto 24) <= hexify (next1 (31 downto 28));
-      
+
       x4( 7 downto  0) <= hexify (next2 ( 3 downto  0));
-      x4(15 downto  8) <= hexify (next2 ( 7 downto  4));
-      x4(23 downto 16) <= hexify (next2 (11 downto  8));
-      x4(31 downto 24) <= hexify (next2 (15 downto 12));
-      
-      x5( 7 downto  0) <= hexify (next2 (19 downto 16));
-      x5(15 downto  8) <= hexify (next2 (23 downto 20));
-      x5(23 downto 16) <= hexify (next2 (27 downto 24));
-      x5(31 downto 24) <= x"80";
+      x4(15 downto  8) <= x"80";
+      x4(31 downto 16) <= x"0000";
+      x5(31 downto  0) <= x"00000000";
+--      x4(15 downto  8) <= hexify (next2 ( 7 downto  4));
+--      x4(23 downto 16) <= hexify (next2 (11 downto  8));
+--      x4(31 downto 24) <= hexify (next2 (15 downto 12));
+
+--      x5( 7 downto  0) <= hexify (next2 (19 downto 16));
+--      x5(15 downto  8) <= hexify (next2 (23 downto 20));
+--      x5(23 downto 16) <= hexify (next2 (27 downto 24));
+--      x5(31 downto 24) <= x"80";
       --x5(31 downto 24) <= hexify (load2 (31 downto 28));
     end if;
   end process;
