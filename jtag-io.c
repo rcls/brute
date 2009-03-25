@@ -16,9 +16,9 @@ enum {
 
 // The bytes we send to USER1 as opcodes.
 enum {
-    op_load_md5 = 1,                    // 8 opcode, 48 clock, 96 data.
-    op_sample_md5 = 2,                  // 8 opcode, 48 clock.
-    op_read_result = 3,         // 8 opcode, 8 clock, returns 48 clock, 96 data.
+    op_read_result = 1,         // 8 opcode, 8 clock, returns 48 clock, 96 data.
+    op_load_md5 = 2,                    // 8 opcode, 48 clock, 96 data.
+    op_sample_md5 = 3,                  // 8 opcode, 48 clock.
     op_read_clock = 4,                  // 8 clock, returns 48 data.
 };
 
@@ -136,7 +136,7 @@ static void write_read (unsigned char * buf,
                         unsigned char * p,
                         size_t count)
 {
-    p = append_ir (p, USER2);
+    p = append_ir (p, USER1);
 
     p = append_tms (p, 1);              // to select-dr-scan.
     p = append_tms (p, 0);              // capture-dr.
@@ -220,9 +220,7 @@ static void read_result (int location, uint64_t * clock, uint32_t data[3])
     p = append_tms (p, 0);              // shift-dr.
 
     p = append_nq (p, location, 8, false); // location.
-    p = append_nq (p, op_read_result, 8, true);
-
-    p = append_nq (p, op_sample_md5, 8, true); // ends in exit1-dr.
+    p = append_nq (p, op_read_result, 8, true); // ends in exit1-dr.
     p = append_tms (p, 1);                   // update-ir.
     p = append_tms (p, 0);                   // runtest-idle.
 
@@ -250,10 +248,9 @@ static uint64_t read_clock (void)
     p = append_tms (p, 1);                   // update-ir.
     p = append_tms (p, 0);                   // runtest-idle.
 
-    //write_read (obuf, p, 48);
-    write_read (obuf, p, 144);
+    write_read (obuf, p, 48);
 
-    return parse_bits (obuf + 96, 48);
+    return parse_bits (obuf, 48);
 }
 
 
@@ -348,12 +345,12 @@ int main()
     uint64_t clock1 = read_clock();
 
     // About 50 ms.
-    sample_md5 (clock1 + 2500000 / 2);
+    sample_md5 (clock1 + 2500000);
 
     usleep (100000);
 
     // About 150 ms.
-    sample_md5 (clock1 + 2500000 / 2 + 2499965);
+    sample_md5 (clock1 + 2500000 + 4999995);
 
     usleep (100000);
 //    sleep (1);

@@ -9,10 +9,9 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 --use UNISIM.VComponents.all;
 
 entity feeder is
-  port (load : in std_logic;
-        load0 : in std_logic_vector (31 downto 0);
-        load1 : in std_logic_vector (31 downto 0);
-        load2 : in std_logic_vector (31 downto 0);
+  port (next0 : in std_logic_vector (31 downto 0);
+        next1 : in std_logic_vector (31 downto 0);
+        next2 : in std_logic_vector (31 downto 0);
 
         hit : out std_logic;
 
@@ -58,6 +57,15 @@ architecture Behavioral of feeder is
     return result;
   end hexify;
 
+  function hexify16 (n : std_logic_vector (15 downto 0)) return word_t is
+    variable result : word_t;
+  begin
+    result( 7 downto  0) := hexify (n ( 3 downto  0));
+    result(15 downto  8) := hexify (n ( 7 downto  4));
+    result(23 downto 16) := hexify (n (11 downto  8));
+    result(31 downto 24) := hexify (n (15 downto 12));
+  end hexify16;
+  
   signal x0 : word_t;
   signal x1 : word_t;
   signal x2 : word_t;
@@ -88,21 +96,8 @@ begin
 
   -- Feed through results to input.
   process (Clk)
-    variable next0 : word_t;
-    variable next1 : word_t;
-    variable next2 : word_t;
   begin
     if Clk'event and Clk = '1' then
-      if load = '1' then
-        next0 := load0;
-        next1 := load1;
-        next2 := load2;
-      else
-        next0 := Aout;
-        next1 := Bout;
-        next2 := Cout;
-      end if;
-
       x0( 7 downto  0) <= hexify (next0 ( 3 downto  0));
       x0(15 downto  8) <= hexify (next0 ( 7 downto  4));
       x0(23 downto 16) <= hexify (next0 (11 downto  8));
@@ -135,7 +130,7 @@ begin
 --      x5(15 downto  8) <= hexify (next2 (23 downto 20));
 --      x5(23 downto 16) <= hexify (next2 (27 downto 24));
 --      x5(31 downto 24) <= x"80";
-      --x5(31 downto 24) <= hexify (load2 (31 downto 28));
+      --x5(31 downto 24) <= hexify (next2 (31 downto 28));
     end if;
   end process;
 end Behavioral;

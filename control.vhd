@@ -50,42 +50,40 @@ architecture Behavioral of control is
 
   subtype word_t is std_logic_vector (31 downto 0);
 
-  component feeder is
-    port (load : in std_logic;
-          load0 : in word_t;
-          load1 : in word_t;
-          load2 : in word_t;
+  component md5 is
+    port (in0 : in word_t;
+          in1 : in word_t;
+          in2 : in word_t;
           
           hit : out std_logic;
 
-          hitA : out word_t;
-          hitB : out word_t;
-          hitC : out word_t;
-          hitD : out word_t;
-          
+          Aout : out word_t;
+          Bout : out word_t;
+          Cout : out word_t;
+          Dout : out word_t;
+
           Clk : in std_logic);
   end component;
 
   signal Clk : std_logic;
 
-  signal f_load : std_logic;
-  signal f_load0 : word_t;
-  signal f_load1 : word_t;
-  signal f_load2 : word_t;
+  signal next0 : word_t;                -- 3 input words to md5.
+  signal next1 : word_t;
+  signal next2 : word_t;
 
-  signal f_hit : std_logic;
-  signal f_hitA : word_t;
-  signal f_hitB : word_t;
-  signal f_hitC : word_t;
-  signal f_hitD : word_t;
-  
+  signal hit : std_logic;               -- Hit signal from md5.
+  signal outA : word_t;                 -- 4 output words from md5.
+  signal outB : word_t;
+  signal outC : word_t;
+  signal outD : word_t;
+
   subtype vector_144 is std_logic_vector (143 downto 0);
   
   -- 152 bit shift register attached to user1.  8 bit opcode plus 144 bits
   -- data.
-  -- opcode 1 : load md5 - 48 bit clock count + 96 bits data.
-  -- opcode 2 : sample md5 - 48 bit clock count
-  -- opcode 3 : read result + 8 bit address
+  -- opcode 1 : read result + 8 bit address
+  -- opcode 2 : load md5 - 48 bit clock count + 96 bits data.
+  -- opcode 3 : sample md5 - 48 bit clock count
   -- opcode 4 : read clock count
   signal command : std_logic_vector (151 downto 0);
   signal command_valid : std_logic := '0';
@@ -104,6 +102,7 @@ architecture Behavioral of control is
   -- The 48 bit global cycle counter.
   signal global_count : std_logic_vector (47 downto 0);
   signal global_count_latch : std_logic_vector (47 downto 0);
+  signal global_count_match : std_logic; -- Does global count match command?
 begin
 
   BSCAN_SPARTAN3_inst : BSCAN_SPARTAN3A
@@ -142,7 +141,7 @@ begin
           command_valid <= '0';
           -- If the previous command was a read-result then grab the data out
           -- of the hit-ram.  Else grab the latched clock.
-          if command (151 downto 144) = x"03" then
+          if command (151 downto 144) = x"01" then
             command <= x"00" & hit_ram_o;
           else
             command <= x"00000000000000000000000000" & global_count_latch;
@@ -164,27 +163,45 @@ begin
     end if;
   end process;
 
-  f : feeder port map (load => f_load,
-                       load0 => f_load0,
-                       load1 => f_load1,
-                       load2 => f_load2,
+  m : md5 port map (in0 => next0,
+                    in1 => next1,
+                    in2 => next2,
 
-                       hit => f_hit,
+                    hit => hit,
 
-                       hitA => f_hitA,
-                       hitB => f_hitB,
-                       hitC => f_hitC,
-                       hitD => f_hitD,
+                    Aout => outA,
+                    Bout => outB,
+                    Cout => outC,
+                    Dout => outD,
 
-                       Clk => Clk);
+                    Clk => Clk);
 
-  -- Write into the hit ram.
+  global_count_match <= '1' when command_edge(1) = '1' and global_count = command (143 downto 96) else '0';
+
+  -- Calculate the next value to feed into the pipeline.
+  process (outA, outB, outC, outD, command_edge, command)
+  begin
+    if command_edge (1) = '1' and
+      -- Commands 2 and 3.
+      command(151 downto 144) = "0000001" & global_count_match then
+      next0 <= command (31 downto 0);
+      next1 <= command (63 downto 32);
+      next2 <= command (95 downto 64);
+    else
+      next0 <= outA;
+      next1 <= outB;
+      next2 <= outC;
+    end if;
+  end process;
+
+  -- Write into the hit ram on hits, and on both commands 2 and 3.
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      if f_hit = '1' or (command_edge (1) = '1' and
-                         command(151 downto 96) = x"02" & global_count) then
-        hit_ram (conv_integer (hit_idx)) <= global_count & f_hitC & f_hitB & f_hitA;
+      if hit = '1' or (command_edge (1) = '1'
+                       and command(151 downto 145) = "0000001"
+                       and command(151 downto 96) = x"02" & global_count) then
+        hit_ram (conv_integer (hit_idx)) <= global_count & next0 & next1 & next2;
         hit_idx <= hit_idx + 1;
       end if;
     end if;
@@ -209,9 +226,4 @@ begin
     end if;
   end process;
 
-  -- Load into the pipeline.
-  f_load <= '1' when command(151 downto 96) = x"01" & global_count else '0';
-  f_load0 <= command (31 downto 0);
-  f_load1 <= command (63 downto 32);
-  f_load2 <= command (95 downto 64);
 end Behavioral;

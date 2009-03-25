@@ -26,8 +26,8 @@ architecture Behavioral of delay is
   constant lima : std_logic_vector (4 downto 0) := conv_std_logic_vector (na - 2, 5);
   constant limb : std_logic_vector (4 downto 0) := conv_std_logic_vector (nb - 2, 5);
 
-  subtype word is std_logic_vector (31 downto 0);
-  type mem_t is array (31 downto 0) of word;
+  subtype word_t is std_logic_vector (31 downto 0);
+  type mem_t is array (31 downto 0) of word_t;
   signal mema : mem_t;
   signal memb : mem_t;
 begin
@@ -61,13 +61,10 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
 
 entity md5 is
-  Port (x0 : in  std_logic_vector (31 downto 0);
-        x1 : in  std_logic_vector (31 downto 0);
-        x2 : in  std_logic_vector (31 downto 0);
-        x3 : in  std_logic_vector (31 downto 0);
-        x4 : in  std_logic_vector (31 downto 0);
-        x5 : in  std_logic_vector (31 downto 0);
-        A64 : out std_logic_vector (31 downto 0);
+  Port (in0 : in  std_logic_vector (31 downto 0);
+        in1 : in  std_logic_vector (31 downto 0);
+        in2 : in  std_logic_vector (31 downto 0);
+        hit : out std_logic;            -- Do we have n zeros for some n.
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
@@ -78,7 +75,9 @@ end md5;
 
 architecture Behavioral of md5 is
   subtype word is std_logic_vector (31 downto 0);
-
+  subtype nibble_t is std_logic_vector (3 downto 0);
+  subtype byte_t is std_logic_vector (7 downto 0);
+  
   type dataset is array (natural range <>) of word;
 
   type iarray is array (natural range <>) of integer;
@@ -105,6 +104,29 @@ architecture Behavioral of md5 is
     x"655b59c3", x"8f0ccc92", x"ffeff47d", x"85845dd1",
     x"6fa87e4f", x"fe2ce6e0", x"a3014314", x"4e0811a1",
     x"f7537e82", x"bd3af235", x"2ad7d2bb", x"eb86d391");
+
+  function hexify (n : nibble_t) return byte_t is
+    variable alpha : std_logic := n(3) and (n(2) or n(1));
+    variable result : byte_t;
+  begin
+    result (7) := '0';
+    result (6) := alpha;
+    result (5) := not alpha;
+    result (4) := not alpha;
+    result (3) := n(3) and not n(2) and not n(1);
+    result (2 downto 0) := n(2 downto 0) - alpha;
+    return result;
+  end hexify;
+
+  function hexify16 (n : std_logic_vector (15 downto 0)) return word is
+    variable result : word;
+  begin
+    result( 7 downto  0) := hexify (n ( 3 downto  0));
+    result(15 downto  8) := hexify (n ( 7 downto  4));
+    result(23 downto 16) := hexify (n (11 downto  8));
+    result(31 downto 24) := hexify (n (15 downto 12));
+    return result;
+  end hexify16;
 
   function F(x : word; y : word; z : word)
     return word is
@@ -237,10 +259,20 @@ architecture Behavioral of md5 is
   signal Hx : dataset (0 to 15) := Xinit;
   signal Ix : dataset (0 to 15) := Xinit;
 
+  -- Formatted input.
+  signal x0 : word;
+  signal x1 : word;
+  signal x2 : word;
+  signal x3 : word;
+  signal x4 : word;
+  signal x5 : word;
+
   constant iA : word := x"67452301";
   constant iB : word := x"efcdab89";
   constant iC : word := x"98badcfe";
   constant iD : word := x"10325476";
+
+  constant iAneg : word := x"00000000" - iA;
 
   component delay is
     generic (na : integer; nb : integer);
@@ -261,8 +293,8 @@ begin
   C(0) <= iC;
   D(0) <= iD;
 
-  -- Early access to output for comparator.
-  A64 <= A(64);
+  -- We flag outputs with 24 zeros.
+  hit <= '1' when A(64)(23 downto 0) = iAneg(23 downto 0) else '0';
 
   -- The actual outputs; let our user do the registering.
   Aout <= A(64) + iA;
@@ -302,6 +334,16 @@ begin
   begin
     if Clk'event and Clk = '1' then
 
+      -- Load x0 through x5 with the hexified inputs.
+      x0 <= hexify16 (in0 (15 downto  0));
+      x1 <= hexify16 (in0 (31 downto 16));
+      x2 <= hexify16 (in1 (15 downto  0));
+      x3 <= hexify16 (in1 (31 downto 16));
+      x4(7 downto 0) <= hexify (in2 (3 downto  0));
+      x4(15 downto 8) <= x"80";
+      x4(31 downto 16) <= x"0000";
+      x5 <= x"00000000";
+      
       Fx(1) <= x1; -- gives 1 cycle delay.
 
       -- I don't see why these are necessary but the simulator seems to need

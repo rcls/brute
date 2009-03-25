@@ -6,6 +6,8 @@ md5log: /usr/lib64/libm.so
 
 check: /usr/lib64/libcrypto.so
 
+collate: /usr/lib64/libcrypto.so
+
 all: brute
 
 brute: brute.o -lpthread
