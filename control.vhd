@@ -203,7 +203,7 @@ begin
     if Clk'event and Clk = '1' then
       if hit = '1' or (command_opcode(7 downto 1) = "0000001"
                        and global_count_match = '1') then
-        hit_ram (conv_integer (hit_idx)) <= global_count & next0 & next1 & next2;
+        hit_ram (conv_integer (hit_idx)) <= global_count & next2 & next1 & next0;
         hit_idx <= hit_idx + 1;
       end if;
     end if;

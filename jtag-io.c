@@ -345,7 +345,7 @@ int main()
     uint64_t clock1 = read_clock();
 
     // About 50 ms.
-    sample_md5 (clock1 + 2500000);
+    load_md5 (clock1 + 2500000, 0x01234567, 0x78abcdef, 0xfc9639da);
 
     usleep (100000);
 
