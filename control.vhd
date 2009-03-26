@@ -49,7 +49,11 @@ architecture Behavioral of control is
   signal jtag_tdo2 : std_logic;
 
   subtype word_t is std_logic_vector (31 downto 0);
-
+  subtype byte_t is std_logic_vector (7 downto 0);
+  -- We use a 48 bit cycle counter.
+  subtype clock_t is std_logic_vector (47 downto 0);
+  subtype vector_144 is std_logic_vector (143 downto 0);
+  
   component md5 is
     port (in0 : in word_t;
           in1 : in word_t;
@@ -77,8 +81,6 @@ architecture Behavioral of control is
   signal outC : word_t;
   signal outD : word_t;
 
-  subtype vector_144 is std_logic_vector (143 downto 0);
-  
   -- 152 bit shift register attached to user1.  8 bit opcode plus 144 bits
   -- data.
   -- opcode 1 : read result + 8 bit address
@@ -86,6 +88,9 @@ architecture Behavioral of control is
   -- opcode 3 : sample md5 - 48 bit clock count
   -- opcode 4 : read clock count
   signal command : std_logic_vector (151 downto 0);
+  alias command_opcode : byte_t is command (151 downto 144);
+  alias command_clock : clock_t is command (143 downto 96);
+  alias command_address : byte_t is command (143 downto 136);
   signal command_valid : std_logic := '0';
   -- Detect rising edge with "01" and falling by "10"; we're crossing
   -- clock domains.
@@ -97,11 +102,11 @@ architecture Behavioral of control is
   -- Output buffer the bram needs.
   signal hit_ram_o : vector_144;
   -- The hit ram allocation counter.
-  signal hit_idx : std_logic_vector (7 downto 0);
+  signal hit_idx : byte_t;
 
   -- The 48 bit global cycle counter.
-  signal global_count : std_logic_vector (47 downto 0);
-  signal global_count_latch : std_logic_vector (47 downto 0);
+  signal global_count : clock_t;
+  signal global_count_latch : clock_t;
   signal global_count_match : std_logic; -- Does global count match command?
 begin
 
@@ -141,7 +146,7 @@ begin
           command_valid <= '0';
           -- If the previous command was a read-result then grab the data out
           -- of the hit-ram.  Else grab the latched clock.
-          if command (151 downto 144) = x"01" then
+          if command_opcode = x"01" then
             command <= x"00" & hit_ram_o;
           else
             command <= x"00000000000000000000000000" & global_count_latch;
@@ -176,14 +181,12 @@ begin
 
                     Clk => Clk);
 
-  global_count_match <= '1' when command_edge(1) = '1' and global_count = command (143 downto 96) else '0';
+  global_count_match <= '1' when command_edge(1) = '1' and global_count = command_clock else '0';
 
   -- Calculate the next value to feed into the pipeline.
-  process (outA, outB, outC, outD, command_edge, command)
+  process (outA, outB, outC, outD, command_opcode, global_count_match)
   begin
-    if command_edge (1) = '1' and
-      -- Commands 2 and 3.
-      command(151 downto 144) = "0000001" & global_count_match then
+    if command_opcode = x"02" and global_count_match = '1' then
       next0 <= command (31 downto 0);
       next1 <= command (63 downto 32);
       next2 <= command (95 downto 64);
@@ -198,9 +201,8 @@ begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      if hit = '1' or (command_edge (1) = '1'
-                       and command(151 downto 145) = "0000001"
-                       and command(151 downto 96) = x"02" & global_count) then
+      if hit = '1' or (command_opcode(7 downto 1) = "0000001"
+                       and global_count_match = '1') then
         hit_ram (conv_integer (hit_idx)) <= global_count & next0 & next1 & next2;
         hit_idx <= hit_idx + 1;
       end if;
@@ -214,7 +216,7 @@ begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      hit_ram_o <= hit_ram (conv_integer (command (143 downto 136)));
+      hit_ram_o <= hit_ram (conv_integer (command_address));
     end if;
   end process;
 
