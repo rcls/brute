@@ -256,53 +256,31 @@ begin
 
 --  Fx0d: delay generic map(na=> 1, nb=>1)
 --    port map (D=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
-  Fx2d: delay generic map(N=> 2)
-    port map (D=>  x2,   Q=>  Fx(2), Clk=> Clk);
-  Fx3d: delay generic map(N=>3)
-    port map (D=>  x3, Q=>  Fx(3), Clk=> Clk);
-  Fx4d: delay generic map(N=> 4)
-    port map (D=>  x4,   Q=>  Fx(4), Clk=> Clk);
-  Fx5d: delay generic map(N=>5)
-    port map (D=>  x5, Q=>  Fx(5), Clk=> Clk);
+  Fx2d: delay generic map(N=>2)      port map (D=> x2,    Q=> Fx(2), Clk=> Clk);
+  Fx3d: delay generic map(N=>3)      port map (D=> x3,    Q=> Fx(3), Clk=> Clk);
+  Fx4d: delay generic map(N=>4)      port map (D=> x4,    Q=> Fx(4), Clk=> Clk);
+  Fx5d: delay generic map(N=>5)      port map (D=> x5,    Q=> Fx(5), Clk=> Clk);
 
-  Gx0d: delay generic map(N=> D12(0))
-    port map (D=>  Fx(0), Q=>  Gx(0), Clk=> Clk);
-  Gx1d: delay generic map(N=>D12(1))
-    port map (D=>  Fx(1), Q=>  Gx(1), Clk=> Clk);
-  Gx2d: delay generic map(N=> D12(2))
-    port map (D=>  Fx(2), Q=>  Gx(2), Clk=> Clk);
-  Gx3d: delay generic map(N=>D12(3))
-    port map (D=>  Fx(3), Q=>  Gx(3), Clk=> Clk);
-  Gx4d: delay generic map(N=> D12(4))
-    port map (D=>  Fx(4), Q=>  Gx(4), Clk=> Clk);
-  Gx5d: delay generic map(N=>D12(5))
-    port map (D=>  Fx(5), Q=>  Gx(5), Clk=> Clk);
+  Gx0d: delay generic map(N=>D12(0)) port map (D=> Fx(0), Q=> Gx(0), Clk=> Clk);
+  Gx1d: delay generic map(N=>D12(1)) port map (D=> Fx(1), Q=> Gx(1), Clk=> Clk);
+  Gx2d: delay generic map(N=>D12(2)) port map (D=> Fx(2), Q=> Gx(2), Clk=> Clk);
+  Gx3d: delay generic map(N=>D12(3)) port map (D=> Fx(3), Q=> Gx(3), Clk=> Clk);
+  Gx4d: delay generic map(N=>D12(4)) port map (D=> Fx(4), Q=> Gx(4), Clk=> Clk);
+  Gx5d: delay generic map(N=>D12(5)) port map (D=> Fx(5), Q=> Gx(5), Clk=> Clk);
 
-  Hx0d: delay generic map(N=> D23(0))
-    port map (D=>  Gx(0), Q=>  Hx(0), Clk=> Clk);
-  Hx1d: delay generic map(N=>D23(1))
-    port map (D=>  Gx(1), Q=>  Hx(1), Clk=> Clk);
-  Hx2d: delay generic map(N=> D23(2))
-    port map (D=>  Gx(2), Q=>  Hx(2), Clk=> Clk);
-  Hx3d: delay generic map(N=>D23(3))
-    port map (D=>  Gx(3), Q=>  Hx(3), Clk=> Clk);
-  Hx4d: delay generic map(N=> D23(4))
-    port map (D=>  Gx(4), Q=>  Hx(4), Clk=> Clk);
-  Hx5d: delay generic map(N=>D23(5))
-    port map (D=>  Gx(5), Q=>  Hx(5), Clk=> Clk);
+  Hx0d: delay generic map(N=>D23(0)) port map (D=> Gx(0), Q=> Hx(0), Clk=> Clk);
+  Hx1d: delay generic map(N=>D23(1)) port map (D=> Gx(1), Q=> Hx(1), Clk=> Clk);
+  Hx2d: delay generic map(N=>D23(2)) port map (D=> Gx(2), Q=> Hx(2), Clk=> Clk);
+  Hx3d: delay generic map(N=>D23(3)) port map (D=> Gx(3), Q=> Hx(3), Clk=> Clk);
+  Hx4d: delay generic map(N=>D23(4)) port map (D=> Gx(4), Q=> Hx(4), Clk=> Clk);
+  Hx5d: delay generic map(N=>D23(5)) port map (D=> Gx(5), Q=> Hx(5), Clk=> Clk);
 
-  Ix0d: delay generic map(N=> D34(0))
-    port map (D=>  Hx(0), Q=>  Ix(0), Clk=> Clk);
-  Ix1d: delay generic map(N=> D34(1))
-    port map (D=>  Hx(1), Q=>  Ix(1), Clk=> Clk);
-  Ix2d: delay generic map(N=> D34(2))
-    port map (D=>  Hx(2), Q=>  Ix(2), Clk=> Clk);
-  Ix3d: delay generic map(N=> D34(3))
-    port map (D=>  Hx(3), Q=>  Ix(3), Clk=> Clk);
-  Ix4d: delay generic map(N=> D34(4))
-    port map (D=>  Hx(4), Q=>  Ix(4), Clk=> Clk);
-  Ix5d: delay generic map(N=> D34(5))
-    port map (D=>  Hx(5), Q=>  Ix(5), Clk=> Clk);
+  Ix0d: delay generic map(N=>D34(0)) port map (D=> Hx(0), Q=> Ix(0), Clk=> Clk);
+  Ix1d: delay generic map(N=>D34(1)) port map (D=> Hx(1), Q=> Ix(1), Clk=> Clk);
+  Ix2d: delay generic map(N=>D34(2)) port map (D=> Hx(2), Q=> Ix(2), Clk=> Clk);
+  Ix3d: delay generic map(N=>D34(3)) port map (D=> Hx(3), Q=> Ix(3), Clk=> Clk);
+  Ix4d: delay generic map(N=>D34(4)) port map (D=> Hx(4), Q=> Ix(4), Clk=> Clk);
+  Ix5d: delay generic map(N=>D34(5)) port map (D=> Hx(5), Q=> Ix(5), Clk=> Clk);
 
   process (Clk)
   begin
