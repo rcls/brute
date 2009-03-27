@@ -9,51 +9,6 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 library UNISIM;
 use UNISIM.VComponents.all;
 
-entity delay is
-  generic (na : integer; nb : integer);
-
-  port (clk: in std_logic;
-        Da: in std_logic_vector (31 downto 0);
-        Qa: out std_logic_vector (31 downto 0);
-        Db: in std_logic_vector (31 downto 0);
-        Qb: out std_logic_vector (31 downto 0));
-end delay;
-
-architecture Behavioral of delay is
-  signal counta : std_logic_vector (4 downto 0) := "00000";
-  signal countb : std_logic_vector (4 downto 0) := "00000";
-
-  constant lima : std_logic_vector (4 downto 0) := conv_std_logic_vector (na - 2, 5);
-  constant limb : std_logic_vector (4 downto 0) := conv_std_logic_vector (nb - 2, 5);
-
-  subtype word_t is std_logic_vector (31 downto 0);
-  type mem_t is array (31 downto 0) of word_t;
-  signal mema : mem_t;
-  signal memb : mem_t;
-begin
-  process (Clk)
-  begin
-    if Clk'event and Clk = '1' then
-      Qa <= mema (conv_integer (counta));
-      mema (conv_integer (counta)) <= Da;
-      Qb <= memb (conv_integer (countb));
-      memb (conv_integer (countb)) <= Db;
-
-      if counta = lima then
-        counta <= "00000";
-      else
-        counta <= counta + 1;
-      end if;
-
-      if countb = limb then
-        countb <= "00000";
-      else
-        countb <= countb + 1;
-      end if;
-    end if;
-  end process;
-end Behavioral;
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
@@ -275,14 +230,11 @@ architecture Behavioral of md5 is
   constant iAneg : word := x"00000000" - iA;
 
   component delay is
-    generic (na : integer; nb : integer);
+    generic (N : integer);
     port (clk: in std_logic;
 
-          Da: in std_logic_vector (31 downto 0);
-          Qa: out std_logic_vector (31 downto 0);
-
-          Db: in std_logic_vector (31 downto 0);
-          Qb: out std_logic_vector (31 downto 0));
+          D: in std_logic_vector (31 downto 0);
+          Q: out std_logic_vector (31 downto 0));
   end component;
 
 begin
@@ -303,32 +255,54 @@ begin
   Dout <= D(64) + iD;
 
 --  Fx0d: delay generic map(na=> 1, nb=>1)
---    port map (Da=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
-  Fx2d: delay generic map(na=> 2, nb=>3)
-    port map (Da=>  x2,   Qa=>  Fx(2), Db=>  x3, Qb=>  Fx(3), Clk=> Clk);
-  Fx4d: delay generic map(na=> 4, nb=>5)
-    port map (Da=>  x4,   Qa=>  Fx(4), Db=>  x5, Qb=>  Fx(5), Clk=> Clk);
+--    port map (D=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
+  Fx2d: delay generic map(N=> 2)
+    port map (D=>  x2,   Q=>  Fx(2), Clk=> Clk);
+  Fx3d: delay generic map(N=>3)
+    port map (D=>  x3, Q=>  Fx(3), Clk=> Clk);
+  Fx4d: delay generic map(N=> 4)
+    port map (D=>  x4,   Q=>  Fx(4), Clk=> Clk);
+  Fx5d: delay generic map(N=>5)
+    port map (D=>  x5, Q=>  Fx(5), Clk=> Clk);
 
-  Gx0d: delay generic map(na=> D12(0), nb=>D12(1))
-    port map (Da=>  Fx(0), Qa=>  Gx(0), Db=>  Fx(1), Qb=>  Gx(1), Clk=> Clk);
-  Gx2d: delay generic map(na=> D12(2), nb=>D12(3))
-    port map (Da=>  Fx(2), Qa=>  Gx(2), Db=>  Fx(3), Qb=>  Gx(3), Clk=> Clk);
-  Gx4d: delay generic map(na=> D12(4), nb=>D12(5))
-    port map (Da=>  Fx(4), Qa=>  Gx(4), Db=>  Fx(5), Qb=>  Gx(5), Clk=> Clk);
+  Gx0d: delay generic map(N=> D12(0))
+    port map (D=>  Fx(0), Q=>  Gx(0), Clk=> Clk);
+  Gx1d: delay generic map(N=>D12(1))
+    port map (D=>  Fx(1), Q=>  Gx(1), Clk=> Clk);
+  Gx2d: delay generic map(N=> D12(2))
+    port map (D=>  Fx(2), Q=>  Gx(2), Clk=> Clk);
+  Gx3d: delay generic map(N=>D12(3))
+    port map (D=>  Fx(3), Q=>  Gx(3), Clk=> Clk);
+  Gx4d: delay generic map(N=> D12(4))
+    port map (D=>  Fx(4), Q=>  Gx(4), Clk=> Clk);
+  Gx5d: delay generic map(N=>D12(5))
+    port map (D=>  Fx(5), Q=>  Gx(5), Clk=> Clk);
 
-  Hx0d: delay generic map(na=> D23(0), nb=>D23(1))
-    port map (Da=>  Gx(0), Qa=>  Hx(0), Db=>  Gx(1), Qb=>  Hx(1), Clk=> Clk);
-  Hx2d: delay generic map(na=> D23(2), nb=>D23(3))
-    port map (Da=>  Gx(2), Qa=>  Hx(2), Db=>  Gx(3), Qb=>  Hx(3), Clk=> Clk);
-  Hx4d: delay generic map(na=> D23(4), nb=>D23(5))
-    port map (Da=>  Gx(4), Qa=>  Hx(4), Db=>  Gx(5), Qb=>  Hx(5), Clk=> Clk);
+  Hx0d: delay generic map(N=> D23(0))
+    port map (D=>  Gx(0), Q=>  Hx(0), Clk=> Clk);
+  Hx1d: delay generic map(N=>D23(1))
+    port map (D=>  Gx(1), Q=>  Hx(1), Clk=> Clk);
+  Hx2d: delay generic map(N=> D23(2))
+    port map (D=>  Gx(2), Q=>  Hx(2), Clk=> Clk);
+  Hx3d: delay generic map(N=>D23(3))
+    port map (D=>  Gx(3), Q=>  Hx(3), Clk=> Clk);
+  Hx4d: delay generic map(N=> D23(4))
+    port map (D=>  Gx(4), Q=>  Hx(4), Clk=> Clk);
+  Hx5d: delay generic map(N=>D23(5))
+    port map (D=>  Gx(5), Q=>  Hx(5), Clk=> Clk);
 
-  Ix0d: delay generic map(na=> D34(0), nb=>D34(1))
-    port map (Da=>  Hx(0), Qa=>  Ix(0), Db=>  Hx(1), Qb=>  Ix(1), Clk=> Clk);
-  Ix2d: delay generic map(na=> D34(2), nb=>D34(3))
-    port map (Da=>  Hx(2), Qa=>  Ix(2), Db=>  Hx(3), Qb=>  Ix(3), Clk=> Clk);
-  Ix4d: delay generic map(na=> D34(4), nb=>D34(5))
-    port map (Da=>  Hx(4), Qa=>  Ix(4), Db=>  Hx(5), Qb=>  Ix(5), Clk=> Clk);
+  Ix0d: delay generic map(N=> D34(0))
+    port map (D=>  Hx(0), Q=>  Ix(0), Clk=> Clk);
+  Ix1d: delay generic map(N=> D34(1))
+    port map (D=>  Hx(1), Q=>  Ix(1), Clk=> Clk);
+  Ix2d: delay generic map(N=> D34(2))
+    port map (D=>  Hx(2), Q=>  Ix(2), Clk=> Clk);
+  Ix3d: delay generic map(N=> D34(3))
+    port map (D=>  Hx(3), Q=>  Ix(3), Clk=> Clk);
+  Ix4d: delay generic map(N=> D34(4))
+    port map (D=>  Hx(4), Q=>  Ix(4), Clk=> Clk);
+  Ix5d: delay generic map(N=> D34(5))
+    port map (D=>  Hx(5), Q=>  Ix(5), Clk=> Clk);
 
   process (Clk)
   begin
