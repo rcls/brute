@@ -184,7 +184,7 @@ begin
   global_count_match <= '1' when command_edge(1) = '1' and global_count = command_clock else '0';
 
   -- Calculate the next value to feed into the pipeline.
-  process (outA, outB, outC, outD, command_opcode, global_count_match)
+  process (outA, outB, outC, command, command_opcode, global_count_match)
   begin
     if command_opcode = x"02" and global_count_match = '1' then
       next0 <= command (31 downto 0);

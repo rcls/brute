@@ -42,6 +42,12 @@ architecture Behavioral of md5 is
   constant S3 : iarray (0 to 3) := (4, 11, 16, 23);
   constant S4 : iarray (0 to 3) := (6, 10, 15, 21);
 
+  constant S : iarray (0 to 63) := (
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5,  9, 14, 20, 5,  9, 14, 20, 5,  9, 14, 20, 5,  9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21);
+  
   constant KK : dataset (0 to 63) := (
     x"d76aa478", x"e8c7b756", x"242070db", x"c1bdceee",
     x"f57c0faf", x"4787c62a", x"a8304613", x"fd469501",
@@ -83,77 +89,32 @@ architecture Behavioral of md5 is
     return result;
   end hexify16;
 
-  function F(x : word; y : word; z : word)
+  function FF(x : word; y : word; z : word)
     return word is
     variable r : word := (x and y) or (z and not x);
   begin
     return r;
-  end F;
+  end FF;
 
-  function G(x : word; y : word; z : word)
+  function GG(x : word; y : word; z : word)
     return word is
     variable r : word := (z and x) or (y and not z);
   begin
     return r;
-  end G;
+  end GG;
 
-  function H(x : word; y : word; z : word)
+  function HH(x : word; y : word; z : word)
     return word is
     variable r : word := x xor y xor z;
   begin
     return r;
-  end H;
+  end HH;
 
-  function I(x : word; y : word; z : word)
+  function II(x : word; y : word; z : word)
     return word is
     variable r : word := y xor (x or not z);
   begin
     return r;
-  end I;
-
-  function FF(a : word;
-              b : word;
-              c : word;
-              d : word;
-              x : word;
-              s : integer;
-              ac : word) return word is
---    constant r : word := to_stdlogicvector (to_bitvector (a + F(b,c,d) + x + ac) rol s) + b;
-  begin
-    return to_stdlogicvector (to_bitvector (a + F(b,c,d) + x + ac) rol s) + b;
-  end FF;
-
-  function GG(a : word;
-              b : word;
-              c : word;
-              d : word;
-              x : word;
-              s : integer;
-              ac : word) return word is
-  begin
-    return to_stdlogicvector (to_bitvector (a + G(b,c,d) + x + ac) rol s) + b;
-  end GG;
-
-  function HH(a : word;
-              b : word;
-              c : word;
-              d : word;
-              x : word;
-              s : integer;
-              ac : word) return word is
-  begin
-    return to_stdlogicvector (to_bitvector (a + H(b,c,d) + x + ac) rol s) + b;
-  end HH;
-
-  function II(a : word;
-              b : word;
-              c : word;
-              d : word;
-              x : word;
-              s : integer;
-              ac : word) return word is
-  begin
-    return to_stdlogicvector (to_bitvector (a + I(b,c,d) + x + ac) rol s) + b;
   end II;
 
   -- Return the stage at which input #i is used in round 1.
@@ -183,19 +144,19 @@ architecture Behavioral of md5 is
   -- Round 1 to round 2 delay.
   function D12 (i : integer) return integer is
   begin
-    return U2(i) - U1(i);
+    return (U2(i) - U1(i)) * 3;
   end;
 
   -- Round 2 to round 3 delay.
   function D23 (i : integer) return integer is
   begin
-    return U3(i) - U2(i);
+    return (U3(i) - U2(i)) * 3;
   end;
 
   -- Round 3 to round 4 delay.
   function D34 (i : integer) return integer is
   begin
-    return U4(i) - U3(i);
+    return (U4(i) - U3(i)) * 3;
   end;
 
   signal A : dataset (0 to 64);
@@ -203,16 +164,29 @@ architecture Behavioral of md5 is
   signal C : dataset (0 to 64);
   signal D : dataset (0 to 64);
 
+  signal Aa : dataset (0 to 63);
+  signal Ab : dataset (0 to 63);
+  signal Ba : dataset (0 to 63);
+  signal Bb : dataset (0 to 63);
+  signal Ca : dataset (0 to 63);
+  signal Cb : dataset (0 to 63);
+  signal Da : dataset (0 to 63);
+  signal Db : dataset (0 to 63);
+
+  signal sumA1 : dataset (0 to 63);
+  signal sumA2 : dataset (0 to 63);
+  signal sumB : dataset (0 to 63);
+  
   constant Xinit : dataset (0 to 15) := (
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000000", x"00000000",
     x"00000000", x"00000000", x"00000088", x"00000000");
 
-  signal Fx : dataset (0 to 15) := Xinit;
-  signal Gx : dataset (0 to 15) := Xinit;
-  signal Hx : dataset (0 to 15) := Xinit;
-  signal Ix : dataset (0 to 15) := Xinit;
+  signal Fx : dataset (0 to 5);
+  signal Gx : dataset (0 to 5);
+  signal Hx : dataset (0 to 5);
+  signal Ix : dataset (0 to 5);
 
   -- Formatted input.
   signal x0 : word;
@@ -232,7 +206,6 @@ architecture Behavioral of md5 is
   component delay is
     generic (N : integer);
     port (clk: in std_logic;
-
           D: in std_logic_vector (31 downto 0);
           Q: out std_logic_vector (31 downto 0));
   end component;
@@ -256,10 +229,11 @@ begin
 
 --  Fx0d: delay generic map(na=> 1, nb=>1)
 --    port map (D=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
-  Fx2d: delay generic map(N=>2)      port map (D=> x2,    Q=> Fx(2), Clk=> Clk);
-  Fx3d: delay generic map(N=>3)      port map (D=> x3,    Q=> Fx(3), Clk=> Clk);
-  Fx4d: delay generic map(N=>4)      port map (D=> x4,    Q=> Fx(4), Clk=> Clk);
-  Fx5d: delay generic map(N=>5)      port map (D=> x5,    Q=> Fx(5), Clk=> Clk);
+  Fx1d: delay generic map(N=>3)      port map (D=> x1,    Q=> Fx(1), Clk=> Clk);
+  Fx2d: delay generic map(N=>6)      port map (D=> x2,    Q=> Fx(2), Clk=> Clk);
+  Fx3d: delay generic map(N=>9)      port map (D=> x3,    Q=> Fx(3), Clk=> Clk);
+  Fx4d: delay generic map(N=>12)     port map (D=> x4,    Q=> Fx(4), Clk=> Clk);
+  Fx5d: delay generic map(N=>15)     port map (D=> x5,    Q=> Fx(5), Clk=> Clk);
 
   Gx0d: delay generic map(N=>D12(0)) port map (D=> Fx(0), Q=> Gx(0), Clk=> Clk);
   Gx1d: delay generic map(N=>D12(1)) port map (D=> Fx(1), Q=> Gx(1), Clk=> Clk);
@@ -283,8 +257,22 @@ begin
   Ix5d: delay generic map(N=>D34(5)) port map (D=> Hx(5), Q=> Ix(5), Clk=> Clk);
 
   process (Clk)
+    variable Y : dataset (0 to 63);
+    variable func : word;
+    variable index : integer;
+    variable rolbits : integer;
   begin
     if Clk'event and Clk = '1' then
+
+      -- Piece together the delayed input data.
+      Y := Xinit & Xinit & Xinit & Xinit;
+      for i in 0 to 5 loop
+        Y(i) := Fx(i);
+        Y(i + 16) := Gx(i);
+        Y(i + 32) := Hx(i);
+        Y(i + 48) := Ix(i);
+      end loop;
+      Y(0) := x0;
 
       -- Load x0 through x5 with the hexified inputs.
       x0 <= hexify16 (in0 (15 downto  0));
@@ -295,8 +283,6 @@ begin
       x4(15 downto 8) <= x"80";
       x4(31 downto 16) <= x"0000";
       x5 <= x"00000000";
-      
-      Fx(1) <= x1; -- gives 1 cycle delay.
 
       -- I don't see why these are necessary but the simulator seems to need
       -- them.
@@ -307,30 +293,50 @@ begin
 
       -- Propagations.
       for i in 0 to 63 loop
-        A(i+1) <= D(i);
-        C(i+1) <= B(i);
-        D(i+1) <= C(i);
+        Ba(i) <= B(i);
+        Ca(i) <= C(i);
+        Da(i) <= D(i);
+
+        Bb(i) <= Ba(i);
+        Cb(i) <= Ca(i);
+        Db(i) <= Da(i);
+
+        A(i+1) <= Db(i);
+        C(i+1) <= Bb(i);
+        D(i+1) <= Cb(i);
       end loop;
 
-      -- round 1.
-      for i in 0 to 15 loop
-        B(i+1) <= FF (A(i), B(i), C(i), D(i), Fx(i), S1(i mod 4), kk(i));
-      end loop;
+      -- MD5.
+      for i in 0 to 63 loop
+        if i < 16 then
+          func := FF (B(i), C(i), D(i));
+          index := i;
+          rolbits := S1 (i mod 4);
+        elsif i < 32 then
+          func := GG (B(i), C(i), D(i));
+          index := ((i * 5 + 1) mod 16) + 16;
+          rolbits := S2 (i mod 4);
+        elsif i < 48 then
+          func := HH (B(i), C(i), D(i));
+          index := ((i * 3 + 5) mod 16) + 32;
+          rolbits := S3 (i mod 4);
+        else
+          func := II (B(i), C(i), D(i));
+          index := ((i * 7) mod 16) + 48;
+          rolbits := S4 (i mod 4);
+        end if;
+          
+        if i mod 16 < 6 then
+          sumA1(i) <= func + kk(i);
+          sumA2(i) <= Y(index) + A(i);
+        else
+          -- Both Y(i) and k(i) are constants.
+          sumA1(i) <= func;
+          sumA2(i) <= A(i) + (Y(index) + kk(i));
+        end if;
+        sumB(i) <= sumA1(i) + sumA2(i);
 
-      -- Round 2
-      for i in 16 to 31 loop
-        B(i+1) <= GG (A(i), B(i), C(i), D(i), Gx ((i*5+1) mod 16), S2(i mod 4), kk(i));
-      end loop;
-
-      -- Round 3
-      for i in 32 to 47 loop
-        B(i+1) <= HH (A(i), B(i), C(i), D(i), Hx ((i*3+5) mod 16), S3(i mod 4), kk(i));
-      end loop;
-
-      -- Round 4
-      for i in 48 to 63 loop
-        B(i+1) <= II (A(i), B(i), C(i), D(i),
-                      Ix ((i*7) mod 16), S4(i mod 4), kk(i));
+        B(i+1) <= to_stdlogicvector (to_bitvector (sumB(i)) rol rolbits) + Bb(i);
       end loop;
     end if;
   end process;
