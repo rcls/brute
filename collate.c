@@ -197,6 +197,7 @@ static void load_md5 (uint64_t clock,
 }
 
 
+#if 0
 static void sample_md5 (uint64_t clock)
 {
     unsigned char obuf[2048];
@@ -217,6 +218,7 @@ static void sample_md5 (uint64_t clock)
 
     write_data (obuf, p);
 }
+#endif
 
 
 static void read_result (int location, uint64_t * clock, uint32_t data[3])
@@ -262,7 +264,7 @@ static uint64_t read_clock (void)
     //write_read (obuf, p, 48);
     write_read (obuf, p, 144);
 
-    return parse_bits (obuf + 96, 48);
+    return parse_bits (obuf, 48);
 }
 
 
@@ -337,14 +339,6 @@ static void open_serial (void)
         perror_exit ("tcflush failed");
 }
 
-void yeah(void)
-{
-    load_md5 (0,0,0,0);
-/*     uint64_t clock; */
-/*     uint32_t data[3]; */
-/*     read_result (0, &clock, data); */
-/*     sample_md5 (0); */
-}
 
 void transform (const uint32_t din[3], uint32_t dout[3])
 {
@@ -371,7 +365,7 @@ void transform (const uint32_t din[3], uint32_t dout[3])
 
 bool match (const uint32_t A[3], const uint32_t B[3])
 {
-    return A[0] == B[0] && B[1] == B[1] && (A[2] & 255) == (B[2] & 255);
+    return A[0] == B[0] && A[1] == B[1] && (A[2] & 15) == (B[2] & 15);
 }
 
 
@@ -435,17 +429,26 @@ static void finish (result_t * MA, result_t * MB)
 }
 
 
+static result_t * channel_last[65];
+static int channels_seeded;
+
+
 static void add_result (result_t * result)
 {
-    static result_t * channel_last[65];
-
     static result_t * hash[256];
+
+    int channel = result->clock % 65;
+
+    if (channel_last[channel] == NULL) {
+        if ((result->data[0] & 0xffffff) == 0)
+            return;
+        ++channels_seeded;
+    }
 
     result_t * r = malloc (sizeof (result_t));
     *r = *result;
     r->hash_next = NULL;
     
-    int channel = r->clock % 65;
     r->channel_prev = channel_last[channel];
     channel_last[channel] = r;
 
@@ -466,15 +469,23 @@ static void add_result (result_t * result)
 }
 
 
-static int compare_result (const void * aa, const void * bb)
+static void seed (void)
 {
-    const result_t * a = aa;
-    const result_t * b = bb;
-    if (a->clock < b->clock)
-        return -1;
-    if (a->clock > b->clock)
-        return 1;
-    return 0;
+    for (int i = 0; i != 65; ++i) {
+        if (channel_last[i] != NULL)
+            continue;
+
+        printf (".");
+        fflush (stdout);
+        uint64_t clock = read_clock();
+
+        clock += 1000000;                 // About 20ms.
+        clock -= clock % 65;
+        clock += i;
+        load_md5 (clock, i + 256, i + 256, i + 256);
+        usleep (20003);
+    }
+    printf ("\n");
 }
 
 
@@ -483,52 +494,26 @@ int main()
     open_serial();
     jtag_reset();
 
+    setvbuf (stdout, (char *) NULL, _IOLBF, 0);
+
     printf ("ID Code is %08x\n", read_id());
 
-    // Start by sampling all 65 channels.
-    for (int i = 0; i != 65; ++i) {
-        printf (".");
-        fflush (stdout);
-        // Set a target about 25ms in the future.
-        uint64_t clock = read_clock();
-        uint64_t target = clock + 25 * 50000;
-        target = target - target % 65 + i;
-        sample_md5 (target);
-        usleep (50000);
-    }
-    printf ("\n");
+    int index = 0;
+    uint64_t clock = 0;
 
-    result_t first_results[256];
-    result_t * p = first_results;
-
-    // Now start collating data.  Firstly, scan all 256 results, and just keep
-    // the non-zero ones.
-    for (int i = 0; i != 256; ++i) {
-        printf (".");
-        fflush (stdout);
-        p->ram_slot = i;
-        read_result (i, &p->clock, p->data);
-        if (p->clock != 0)
-            ++p;
-    }
-    printf ("\n");
-
-    qsort (first_results, p - first_results, sizeof (result_t), compare_result);
-    for (result_t * q = first_results; q != p; ++q)
-        add_result (q);
-
-    int index = p[-1].ram_slot + 1;
-    uint64_t clock = p[-1].clock;
     while (true) {
         result_t result;
         result.ram_slot = index & 255;
         read_result (index & 255, &result.clock, result.data);
-        if (result.clock <= clock)
-            sleep (1);
-        else {
+        if (result.clock > clock) {
             add_result (&result);
             clock = result.clock;
             ++index;
         }
+        else if (channels_seeded < 65) {
+            seed();
+        }
+        else
+            sleep (1);
     }
 }

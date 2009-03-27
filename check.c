@@ -3,8 +3,8 @@
 #include <openssl/md5.h>
 #include <stdio.h>
 
-const uint64_t start_clock = 5509660748;
-const uint64_t finish_clock = 5512160713;
+const uint64_t start_clock = 11984264945;
+const uint64_t finish_clock = 11989264940;
 
 const uint32_t start_data[3] = { 0x47a1c013, 0x15809826, 0x42553b49 };
 const uint32_t finish_data[3] = { 0x09bd69af, 0x2ab2c650, 0x927c94de };
@@ -33,7 +33,7 @@ void transform (uint32_t data[32])
 
 int main()
 {
-    uint32_t data[3] = { 0x47a1c013, 0x15809826, 0x42553b49 };
+    uint32_t data[3] = { 0x01234567, 0x78abcdef, 0xfc9639da };
     for (uint64_t i = start_clock; i != finish_clock; i += 65) {
         transform (data);
     }
