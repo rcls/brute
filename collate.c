@@ -11,6 +11,9 @@
 #include <assert.h>
 #include <openssl/md5.h>
 
+#define STAGES 193
+#define FREQ 50000000
+
 // The two jtag commands
 enum {
     USER1 = 2,
@@ -372,19 +375,21 @@ bool match (const uint32_t A[3], const uint32_t B[3])
 static void finish (result_t * MA, result_t * MB)
 {
     printf ("HIT!!!!\n");
-    printf ("%12lu %08x %08x %08x [%2lu]\n",
-            MA->clock, MA->data[0], MA->data[1], MA->data[2], MA->clock % 65);
-    printf ("%12lu %08x %08x %08x [%2lu]\n",
-            MB->clock, MB->data[0], MB->data[1], MB->data[2], MB->clock % 65);
+    printf ("%12lu %08x %08x %08x [%3lu]\n",
+            MA->clock, MA->data[0], MA->data[1], MA->data[2],
+            MA->clock % STAGES);
+    printf ("%12lu %08x %08x %08x [%3lu]\n",
+            MB->clock, MB->data[0], MB->data[1], MB->data[2],
+            MB->clock % STAGES);
 
     result_t CA = *(MA->channel_prev);
     result_t CB = *(MB->channel_prev);
 
-    assert (MA->clock % 65 == MA->channel_prev->clock % 65);
-    assert (MB->clock % 65 == MB->channel_prev->clock % 65);
+    assert (MA->clock % STAGES == MA->channel_prev->clock % STAGES);
+    assert (MB->clock % STAGES == MB->channel_prev->clock % STAGES);
 
-    uint64_t gapA = (MA->clock - MA->channel_prev->clock) / 65;
-    uint64_t gapB = (MB->clock - MB->channel_prev->clock) / 65;
+    uint64_t gapA = (MA->clock - MA->channel_prev->clock) / STAGES;
+    uint64_t gapB = (MB->clock - MB->channel_prev->clock) / STAGES;
     uint64_t window;
 
     if (gapA < gapB) {
@@ -429,7 +434,7 @@ static void finish (result_t * MA, result_t * MB)
 }
 
 
-static result_t * channel_last[65];
+static result_t * channel_last[STAGES];
 static int channels_seeded;
 
 
@@ -437,7 +442,7 @@ static void add_result (result_t * result)
 {
     static result_t * hash[256];
 
-    int channel = result->clock % 65;
+    int channel = result->clock % STAGES;
 
     if (channel_last[channel] == NULL) {
         if ((result->data[0] & 0xffffff) == 0)
@@ -452,7 +457,7 @@ static void add_result (result_t * result)
     r->channel_prev = channel_last[channel];
     channel_last[channel] = r;
 
-    printf ("%12lu %08x %08x %08x [%2u]%s\n",
+    printf ("%12lu %08x %08x %08x [%3u]%s\n",
             r->clock, r->data[0], r->data[1], r->data[2], channel,
             r->channel_prev ? "" : " - first on channel");
     if (r->channel_prev == NULL)
@@ -471,7 +476,7 @@ static void add_result (result_t * result)
 
 static void seed (void)
 {
-    for (int i = 0; i != 65; ++i) {
+    for (int i = 0; i != STAGES; ++i) {
         if (channel_last[i] != NULL)
             continue;
 
@@ -479,8 +484,8 @@ static void seed (void)
         fflush (stdout);
         uint64_t clock = read_clock();
 
-        clock += 1000000;                 // About 20ms.
-        clock -= clock % 65;
+        clock += FREQ / 50;
+        clock -= clock % STAGES;
         clock += i;
         load_md5 (clock, i + 256, i + 256, i + 256);
         usleep (20003);
@@ -510,7 +515,7 @@ int main()
             clock = result.clock;
             ++index;
         }
-        else if (channels_seeded < 65) {
+        else if (channels_seeded < STAGES) {
             seed();
         }
         else
