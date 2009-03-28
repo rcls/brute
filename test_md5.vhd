@@ -83,7 +83,7 @@ begin
       --x3 <= x"00000000";
       Clk <= '0';
       -- First, clock 100 times so that outputs settle.
-      for i in 1 to 100 loop
+      for i in 1 to 1000 loop
          Clk <= '0';
          wait for 0.5 us;
          Clk <= '1';

@@ -36,12 +36,12 @@ end delay;
 
 architecture Behavioral of delay is
 
-  signal count : std_logic_vector (5 downto 0) := "000000";
+  signal count : std_logic_vector (6 downto 0) := "0000000";
 
-  constant limit : std_logic_vector (5 downto 0) := conv_std_logic_vector (N - 2, 6);
+  constant limit : std_logic_vector (6 downto 0) := conv_std_logic_vector (N - 2, 7);
 
   subtype word_t is std_logic_vector (31 downto 0);
-  type mem_t is array (63 downto 0) of word_t;
+  type mem_t is array (127 downto 0) of word_t;
   signal mem : mem_t;
 begin
   process (Clk)
@@ -51,7 +51,7 @@ begin
       mem (conv_integer (count)) <= D;
 
       if count = limit then
-        count <= "000000";
+        count <= "0000000";
       else
         count <= count + 1;
       end if;
