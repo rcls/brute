@@ -11,8 +11,10 @@
 #include <assert.h>
 #include <openssl/md5.h>
 
-#define STAGES 193
-#define FREQ 50000000
+#define STAGES 194
+
+
+#define FREQ 130000000
 
 // The two jtag commands
 enum {
@@ -487,7 +489,8 @@ static void seed (void)
         clock += FREQ / 50;
         clock -= clock % STAGES;
         clock += i;
-        load_md5 (clock, i + 256, i + 256, i + 256);
+        // The clock comparison is registered, giving a one-cycle delay.
+        load_md5 (clock - 1, i + 256, i + 256, i + 256);
         usleep (20003);
     }
     printf ("\n");
@@ -499,7 +502,7 @@ int main()
     open_serial();
     jtag_reset();
 
-    setvbuf (stdout, (char *) NULL, _IOLBF, 0);
+    setvbuf (stdout, NULL, _IOLBF, 0);
 
     printf ("ID Code is %08x\n", read_id());
 

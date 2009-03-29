@@ -2,12 +2,12 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 
 // Do an md5 hash block, loging intermediate values.
 
 //Note: All variables are unsigned 32 bits and wrap modulo 2^32 when calculating
 
-typedef unsigned int u32;
 static const int r[64] = {
     7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
     5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
@@ -16,30 +16,33 @@ static const int r[64] = {
 };
 
 
-static u32 k[64];
+static uint32_t k[64];
 
 static void init_k (void)
 {
     //Use binary integer part of the sines of integers (Radians) as constants:
     for (int i = 0; i != 64; ++i)
-        k[i] = (u32) (floor (fabs (sin (i + 1)) * 65536 * 65536));
+        k[i] = (uint32_t) (floor (fabs (sin (i + 1)) * 65536 * 65536));
 }
 
-static u32 leftrotate (u32 x, int r)
+static uint32_t leftrotate (uint32_t x, int r)
 {
     return (x << r) + (x >> (32 - r));
 }
 
 
-static void run (u32 w0, u32 w1, u32 w2, u32 w3)
+static void run (uint32_t w0, uint32_t w1, uint32_t w2,
+                 uint32_t w3, uint32_t w4, uint32_t w5)
 {
-    u32 w[16];
+    printf ("%08x %08x %08x %08x %08x %08x\n", w0, w1, w2, w3, w4, w5);
+
+    uint32_t w[16];
     w[0] = w0;
     w[1] = w1;
     w[2] = w2;
     w[3] = w3;
-    w[4] = 0x00000080;
-    w[5] = 0;
+    w[4] = w4;
+    w[5] = w5;
     w[6] = 0;
     w[7] = 0;
     w[8] = 0;
@@ -48,24 +51,24 @@ static void run (u32 w0, u32 w1, u32 w2, u32 w3)
     w[11] = 0;
     w[12] = 0;
     w[13] = 0;
-    w[14] = 0x80;
+    w[14] = 0x88;
     w[15] = 0;
 
     //Initialize variables:
-    static const u32 h0 = 0x67452301;
-    static const u32 h1 = 0xEFCDAB89;
-    static const u32 h2 = 0x98BADCFE;
-    static const u32 h3 = 0x10325476;
+    static const uint32_t h0 = 0x67452301;
+    static const uint32_t h1 = 0xEFCDAB89;
+    static const uint32_t h2 = 0x98BADCFE;
+    static const uint32_t h3 = 0x10325476;
 
-    u32 a = h0;
-    u32 b = h1;
-    u32 c = h2;
-    u32 d = h3;
+    uint32_t a = h0;
+    uint32_t b = h1;
+    uint32_t c = h2;
+    uint32_t d = h3;
 
     //Main loop:
     for (int i = 0; i != 64; ++i) {
         printf ("%2u %08x %08x %08x %08x\n", i, a, b, c, d);
-        u32 f;
+        uint32_t f;
         int g;
         if (i < 16) {
             f = (b & c) | ((~ b) & d);
@@ -83,7 +86,7 @@ static void run (u32 w0, u32 w1, u32 w2, u32 w3)
             f = c ^ (b | (~ d));
             g = (7 * i) % 16;
         }
-        u32 temp = d;
+        uint32_t temp = d;
         d = c;
         c = b;
         b = b + leftrotate (a + f + k[i] + w[g], r[i]);
@@ -98,11 +101,34 @@ static void run (u32 w0, u32 w1, u32 w2, u32 w3)
     printf ("   %08x %08x %08x %08x\n", a, b, c, d);
 }
 
+static unsigned char hexify (int n)
+{
+    n &= 15;
+    if (n < 10)
+        return n + '0';
+    else
+        return n - 10 + 'A';
+}
+
 int main()
 {
     init_k();
 //    run (0,0,0,0);
-    run (0xe040a4f0, 0x7d4a91b5, 0x694f8475, 0x4e2443bc);
+    unsigned char bytes[32];
+    uint32_t words[4] = { 0xe040a4f0, 0x7d4a91b5, 0x694f8475, 0x4e2443bc };
+
+    for (int i = 0; i != 17; ++i)
+        bytes[i] = hexify (words[i/8] >> (4 * (i%8)));
+    bytes[17] = 0x80;
+    for (int i = 18; i != 31; ++i)
+        bytes[i] = 0;
+
+    uint32_t exp[8];
+    for (int i = 0; i != 8; ++i)
+        exp[i] = bytes[i*4] + bytes[i*4+1] * 256
+            + bytes[i*4+2] * 65536 + bytes[i*4+3] * 16777216;
+
+    run (exp[0], exp[1], exp[2], exp[3], exp[4], exp[5]);
 
     return 0;
 }

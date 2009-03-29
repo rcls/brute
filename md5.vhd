@@ -19,7 +19,7 @@ entity md5 is
   Port (in0 : in  std_logic_vector (31 downto 0);
         in1 : in  std_logic_vector (31 downto 0);
         in2 : in  std_logic_vector (31 downto 0);
-        hit : out std_logic;            -- Do we have n zeros for some n.
+        --hit : out std_logic;            -- Do we have n zeros for some n.
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
@@ -210,8 +210,15 @@ architecture Behavioral of md5 is
           Q: out std_logic_vector (31 downto 0));
   end component;
 
+  -- We really do want to buffer these; XST is too smart for it's
+  -- own good.
+  attribute keep : string;
+  attribute keep of Aout : signal is "true";
+  attribute keep of Bout : signal is "true";
+  attribute keep of Cout : signal is "true";
+  attribute keep of Dout : signal is "true";
+
 begin
-  Fx(0) <= x0;
 
   A(0) <= iA;
   B(0) <= iB;
@@ -219,21 +226,26 @@ begin
   D(0) <= iD;
 
   -- We flag outputs with 24 zeros.
-  hit <= '1' when A(64)(23 downto 0) = iAneg(23 downto 0) else '0';
+  --hit <= '1' when A(64)(23 downto 0) = iAneg(23 downto 0) else '0';
 
-  -- The actual outputs; let our user do the registering.
-  Aout <= A(64) + iA;
-  Bout <= B(64) + iB;
-  Cout <= C(64) + iC;
-  Dout <= D(64) + iD;
+  -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
+  process (Clk)
+  begin
+   if Clk'event and Clk = '1' then   
+   Aout <= A(64) + iA;
+   Bout <= B(64) + iB;
+   Cout <= C(64) + iC;
+   Dout <= D(64) + iD;
+   end if;
+  end process;
 
 --  Fx0d: delay generic map(na=> 1, nb=>1)
 --    port map (D=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
-  Fx1d: delay generic map(N=>3)      port map (D=> x1,    Q=> Fx(1), Clk=> Clk);
-  Fx2d: delay generic map(N=>6)      port map (D=> x2,    Q=> Fx(2), Clk=> Clk);
-  Fx3d: delay generic map(N=>9)      port map (D=> x3,    Q=> Fx(3), Clk=> Clk);
-  Fx4d: delay generic map(N=>12)     port map (D=> x4,    Q=> Fx(4), Clk=> Clk);
-  Fx5d: delay generic map(N=>15)     port map (D=> x5,    Q=> Fx(5), Clk=> Clk);
+  Fx1d: delay generic map(N=>4)      port map (D=> x1,    Q=> Fx(1), Clk=> Clk);
+  Fx2d: delay generic map(N=>7)      port map (D=> x2,    Q=> Fx(2), Clk=> Clk);
+  Fx3d: delay generic map(N=>10)      port map (D=> x3,    Q=> Fx(3), Clk=> Clk);
+  Fx4d: delay generic map(N=>13)     port map (D=> x4,    Q=> Fx(4), Clk=> Clk);
+  Fx5d: delay generic map(N=>16)     port map (D=> x5,    Q=> Fx(5), Clk=> Clk);
 
   Gx0d: delay generic map(N=>D12(0)) port map (D=> Fx(0), Q=> Gx(0), Clk=> Clk);
   Gx1d: delay generic map(N=>D12(1)) port map (D=> Fx(1), Q=> Gx(1), Clk=> Clk);
@@ -255,25 +267,9 @@ begin
   Ix3d: delay generic map(N=>D34(3)) port map (D=> Hx(3), Q=> Ix(3), Clk=> Clk);
   Ix4d: delay generic map(N=>D34(4)) port map (D=> Hx(4), Q=> Ix(4), Clk=> Clk);
   Ix5d: delay generic map(N=>D34(5)) port map (D=> Hx(5), Q=> Ix(5), Clk=> Clk);
-
-  process (Clk)
-    variable Y : dataset (0 to 63);
-    variable func : word;
-    variable index : integer;
-    variable rolbits : integer;
+      
+  process (in0, in1, in2)
   begin
-    if Clk'event and Clk = '1' then
-
-      -- Piece together the delayed input data.
-      Y := Xinit & Xinit & Xinit & Xinit;
-      for i in 0 to 5 loop
-        Y(i) := Fx(i);
-        Y(i + 16) := Gx(i);
-        Y(i + 32) := Hx(i);
-        Y(i + 48) := Ix(i);
-      end loop;
-      Y(0) := x0;
-
       -- Load x0 through x5 with the hexified inputs.
       x0 <= hexify16 (in0 (15 downto  0));
       x1 <= hexify16 (in0 (31 downto 16));
@@ -283,7 +279,39 @@ begin
       x4(15 downto 8) <= x"80";
       x4(31 downto 16) <= x"0000";
       x5 <= x"00000000";
+  end process;
 
+  process (Clk)
+    variable Y : dataset (0 to 63);
+    variable func : word;
+    variable index : integer;
+    variable rolbits : integer;
+    variable mask1 : word;
+    variable mask0 : word;
+  begin
+    if Clk'event and Clk = '1' then
+
+      Fx(0) <= x0;
+
+      -- Piece together the delayed input data.
+      Y := Xinit & Xinit & Xinit & Xinit;
+      for i in 0 to 5 loop
+        if i < 4 then
+          mask1 := x"00000000";
+          mask0 := x"7f7f7f7f";
+        elsif i = 4 then
+          mask1 := x"00008000";
+          mask0 := x"000080ff";
+        else
+          mask1 := x"00000000";
+          mask0 := x"00000000";
+        end if;
+        Y(i)      := (Fx(i) and mask0) or mask1;
+        Y(i + 16) := (Gx(i) and mask0) or mask1;
+        Y(i + 32) := (Hx(i) and mask0) or mask1;
+        Y(i + 48) := (Ix(i) and mask0) or mask1;
+      end loop;
+      
       -- I don't see why these are necessary but the simulator seems to need
       -- them.
       A(0) <= iA;

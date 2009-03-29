@@ -10,7 +10,7 @@ use UNISIM.VComponents.all;
 
 entity control is
   port (Clk_125MHz : in std_logic;
-         LED : out std_logic_vector (7 downto 0));
+        LED : out std_logic_vector (7 downto 0));
 end control;
 
 architecture Behavioral of control is
@@ -32,7 +32,7 @@ architecture Behavioral of control is
   end component; 
 
   component Clock
-  port (CLKIN_IN : in STD_LOGIC; CLKFX_OUT : out STD_LOGIC);
+    port (CLKIN_IN : in STD_LOGIC; CLKFX_OUT : out STD_LOGIC);
   end component;
 
   signal jtag_tck : std_logic;
@@ -59,7 +59,7 @@ architecture Behavioral of control is
           in1 : in word_t;
           in2 : in word_t;
           
-          hit : out std_logic;
+          --hit : out std_logic;
 
           Aout : out word_t;
           Bout : out word_t;
@@ -75,7 +75,7 @@ architecture Behavioral of control is
   signal next1 : word_t;
   signal next2 : word_t;
 
-  signal hit : std_logic;               -- Hit signal from md5.
+  --signal hit : std_logic;               -- Hit signal from md5.
   signal outA : word_t;                 -- 4 output words from md5.
   signal outB : word_t;
   signal outC : word_t;
@@ -108,6 +108,8 @@ architecture Behavioral of control is
   signal global_count : clock_t;
   signal global_count_latch : clock_t;
   signal global_count_match : std_logic; -- Does global count match command?
+  signal load_match : std_logic; -- Global count match on load command.
+  
 begin
 
   BSCAN_SPARTAN3_inst : BSCAN_SPARTAN3A
@@ -127,9 +129,9 @@ begin
       TDO2 => jtag_tdo2           -- Data input for USER2 function
       );
 
-   clock_inst : clock port map (
-      CLKFX_OUT => Clk,
-      CLKIN_IN => Clk_125MHz);
+  clock_inst : clock port map (
+    CLKFX_OUT => Clk,
+    CLKIN_IN => Clk_125MHz);
 
   -- The outputs; the jtag unit seems to take care of latching on falling TCK.
   jtag_tdo1 <= command (0);
@@ -172,7 +174,7 @@ begin
                     in1 => next1,
                     in2 => next2,
 
-                    hit => hit,
+                    --hit => hit,
 
                     Aout => outA,
                     Bout => outB,
@@ -181,12 +183,33 @@ begin
 
                     Clk => Clk);
 
-  global_count_match <= '1' when command_edge(1) = '1' and global_count = command_clock else '0';
+  -- Calculate global_count_match 1 cycle in advance; the comparator followed
+  -- by fanout seems to be a bottleneck.
+  process (Clk)
+  begin
+    if Clk'event and Clk = '1' then
+      if command_edge(1) & global_count(47 downto 32) =
+        '1' & command_clock(47 downto 32)
+        and global_count(31 downto 16) = command_clock(31 downto 16)
+        and global_count(15 downto  0) = command_clock(15 downto  0)
+      then
+        global_count_match <= '1';
+        if command_opcode = x"02" then
+          load_match <= '1';
+        else
+          load_match <= '0';
+        end if;
+      else
+        global_count_match <= '0';
+        load_match <= '0';
+      end if;
+    end if;
+  end process;
 
   -- Calculate the next value to feed into the pipeline.
   process (outA, outB, outC, command, command_opcode, global_count_match)
   begin
-    if command_opcode = x"02" and global_count_match = '1' then
+    if load_match = '1' then
       next0 <= command (31 downto 0);
       next1 <= command (63 downto 32);
       next2 <= command (95 downto 64);
@@ -201,9 +224,10 @@ begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      if hit = '1' or (command_opcode(7 downto 1) = "0000001"
-                       and global_count_match = '1') then
-        hit_ram (conv_integer (hit_idx)) <= global_count & next2 & next1 & next0;
+      if outA(23 downto 0) = x"000000"
+        or (command_opcode(7 downto 1) = "0000001"
+            and global_count_match = '1') then
+        hit_ram (conv_integer(hit_idx)) <= global_count & next2 & next1 & next0;
         hit_idx <= hit_idx + 1;
       end if;
     end if;
