@@ -110,6 +110,12 @@ architecture Behavioral of control is
   signal global_count_match : std_logic; -- Does global count match command?
   signal load_match : std_logic; -- Global count match on load command.
   
+   -- Intermediates for global cycle counter compare.
+    signal matchA : std_logic;
+    signal matchB : std_logic;
+    signal matchC : std_logic;
+    signal matchD : std_logic;
+
 begin
 
   BSCAN_SPARTAN3_inst : BSCAN_SPARTAN3A
@@ -183,31 +189,47 @@ begin
 
                     Clk => Clk);
 
-  -- Calculate global_count_match 1 cycle in advance; the comparator followed
+  -- Calculate global_count_match 2 cycles in advance; the comparator followed
   -- by fanout seems to be a bottleneck.
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      if command_edge(1) & global_count(47 downto 32) =
-        '1' & command_clock(47 downto 32)
-        and global_count(31 downto 16) = command_clock(31 downto 16)
-        and global_count(15 downto  0) = command_clock(15 downto  0)
-      then
+      if command_edge(1) & global_count(47 downto 36) =
+        '1' & command_clock(47 downto 36) then
+        matchA <= '1';
+      else
+        matchA <= '0';
+      end if;
+      if global_count(35 downto 24) = command_clock(35 downto 24) then
+        matchB <= '1';
+      else
+        matchB <= '0';
+      end if;
+      if global_count(23 downto 12) = command_clock(23 downto 12) then
+        matchC <= '1';
+      else
+        matchC <= '0';
+      end if;
+      if global_count(11 downto 0) = command_clock(11 downto 0) then
+        matchD <= '1';
+      else
+        matchD <= '0';
+      end if;
+      if matchA & matchB & matchC & matchD = "1111" then
         global_count_match <= '1';
-        if command_opcode = x"02" then
-          load_match <= '1';
-        else
-          load_match <= '0';
-        end if;
       else
         global_count_match <= '0';
+      end if;
+      if command_opcode & matchA & matchB & matchC & matchD = x"02f" then
+        load_match <= '1';
+      else
         load_match <= '0';
       end if;
     end if;
   end process;
 
   -- Calculate the next value to feed into the pipeline.
-  process (outA, outB, outC, command, command_opcode, global_count_match)
+  process (outA, outB, outC, command, load_match)
   begin
     if load_match = '1' then
       next0 <= command (31 downto 0);

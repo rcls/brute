@@ -9,11 +9,8 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 library UNISIM;
 use UNISIM.VComponents.all;
 
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.STD_LOGIC_ARITH.ALL;
-use IEEE.STD_LOGIC_UNSIGNED.ALL;
-
+library work;
+use work.defs.all;
 
 entity md5 is
   Port (in0 : in  std_logic_vector (31 downto 0);
@@ -24,6 +21,7 @@ entity md5 is
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
         Dout : out std_logic_vector (31 downto 0);
+		  bmon : out dataset (0 to 64);
         Clk : in std_logic);
 end md5;
 
@@ -33,7 +31,7 @@ architecture Behavioral of md5 is
   subtype nibble_t is std_logic_vector (3 downto 0);
   subtype byte_t is std_logic_vector (7 downto 0);
   
-  type dataset is array (natural range <>) of word;
+  --type dataset is array (natural range <>) of word;
 
   type iarray is array (natural range <>) of integer;
 
@@ -47,7 +45,7 @@ architecture Behavioral of md5 is
     5,  9, 14, 20, 5,  9, 14, 20, 5,  9, 14, 20, 5,  9, 14, 20,
     4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
     6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21);
-  
+
   constant KK : dataset (0 to 63) := (
     x"d76aa478", x"e8c7b756", x"242070db", x"c1bdceee",
     x"f57c0faf", x"4787c62a", x"a8304613", x"fd469501",
@@ -88,6 +86,16 @@ architecture Behavioral of md5 is
     result(31 downto 24) := hexify (n (15 downto 12));
     return result;
   end hexify16;
+
+  function rotl (x : word; n : integer) return word is
+--    variable result : word;
+  begin
+	 if n = 0 then
+		return x;
+	 else
+		return x(31 - n downto 0) & x(31 downto 31 - n + 1);
+	 end if;
+  end rotl;
 
   function FF(x : word; y : word; z : word)
     return word is
@@ -164,8 +172,8 @@ architecture Behavioral of md5 is
   signal C : dataset (0 to 64);
   signal D : dataset (0 to 64);
 
-  signal Aa : dataset (0 to 63);
-  signal Ab : dataset (0 to 63);
+  --signal Aa : dataset (0 to 63);
+  --signal Ab : dataset (0 to 63);
   signal Ba : dataset (0 to 63);
   signal Bb : dataset (0 to 63);
   signal Ca : dataset (0 to 63);
@@ -189,25 +197,39 @@ architecture Behavioral of md5 is
   signal Ix : dataset (0 to 5);
 
   -- Formatted input.
-  signal x0 : word;
-  signal x1 : word;
-  signal x2 : word;
-  signal x3 : word;
-  signal x4 : word;
-  signal x5 : word;
+  signal xx : dataset (0 to 5);
+
+  -- Signals connected to DSP adders.
+  signal dspOneA : dataset (0 to 19);
+  signal dspOneB : dataset (0 to 19);
+  signal dspTwo : dataset (0 to 19);
+  signal dspSum : dataset (0 to 19);
 
   constant iA : word := x"67452301";
   constant iB : word := x"efcdab89";
   constant iC : word := x"98badcfe";
   constant iD : word := x"10325476";
 
-  constant iAneg : word := x"00000000" - iA;
-
   component delay is
     generic (N : integer);
     port (clk: in std_logic;
           D: in std_logic_vector (31 downto 0);
           Q: out std_logic_vector (31 downto 0));
+  end component;
+
+  -- Compute (OneA + OneB) + Two using DSPs.  We do this for steps 8 to 12
+  -- of each round.
+  component adder3 is
+    generic (regOneA : integer;
+             regOneB : integer;
+             regTwo : integer;
+             regInt : integer;
+             regOut : integer);
+    port (OneA : in  STD_LOGIC_VECTOR (31 downto 0);
+          OneB : in  STD_LOGIC_VECTOR (31 downto 0);
+          Two : in  STD_LOGIC_VECTOR (31 downto 0);
+          Sum : out  STD_LOGIC_VECTOR (31 downto 0);
+          Clk : std_logic);
   end component;
 
   -- We really do want to buffer these; XST is too smart for it's
@@ -217,7 +239,7 @@ architecture Behavioral of md5 is
   attribute keep of Bout : signal is "true";
   attribute keep of Cout : signal is "true";
   attribute keep of Dout : signal is "true";
-
+  signal tempi : dataset (0 to 19);
 begin
 
   A(0) <= iA;
@@ -225,60 +247,67 @@ begin
   C(0) <= iC;
   D(0) <= iD;
 
+ --bmon(0 to 5) <= Fx;
+
   -- We flag outputs with 24 zeros.
   --hit <= '1' when A(64)(23 downto 0) = iAneg(23 downto 0) else '0';
 
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)
   begin
-   if Clk'event and Clk = '1' then   
-   Aout <= A(64) + iA;
-   Bout <= B(64) + iB;
-   Cout <= C(64) + iC;
-   Dout <= D(64) + iD;
-   end if;
+    if Clk'event and Clk = '1' then   
+      Aout <= A(64) + iA;
+      Bout <= B(64) + iB;
+      Cout <= C(64) + iC;
+      Dout <= D(64) + iD;
+    end if;
   end process;
 
 --  Fx0d: delay generic map(na=> 1, nb=>1)
 --    port map (D=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
-  Fx1d: delay generic map(N=>4)      port map (D=> x1,    Q=> Fx(1), Clk=> Clk);
-  Fx2d: delay generic map(N=>7)      port map (D=> x2,    Q=> Fx(2), Clk=> Clk);
-  Fx3d: delay generic map(N=>10)      port map (D=> x3,    Q=> Fx(3), Clk=> Clk);
-  Fx4d: delay generic map(N=>13)     port map (D=> x4,    Q=> Fx(4), Clk=> Clk);
-  Fx5d: delay generic map(N=>16)     port map (D=> x5,    Q=> Fx(5), Clk=> Clk);
+  FxDgen: for i in 1 to 5 generate
+    Fxd: delay generic map(N=> 3*i+1) port map (D=> xx(i), Q=> Fx(i), Clk=> Clk);
+  end generate;
 
-  Gx0d: delay generic map(N=>D12(0)) port map (D=> Fx(0), Q=> Gx(0), Clk=> Clk);
-  Gx1d: delay generic map(N=>D12(1)) port map (D=> Fx(1), Q=> Gx(1), Clk=> Clk);
-  Gx2d: delay generic map(N=>D12(2)) port map (D=> Fx(2), Q=> Gx(2), Clk=> Clk);
-  Gx3d: delay generic map(N=>D12(3)) port map (D=> Fx(3), Q=> Gx(3), Clk=> Clk);
-  Gx4d: delay generic map(N=>D12(4)) port map (D=> Fx(4), Q=> Gx(4), Clk=> Clk);
-  Gx5d: delay generic map(N=>D12(5)) port map (D=> Fx(5), Q=> Gx(5), Clk=> Clk);
+  XxDgen: for i in 0 to 5 generate
+    Gxd: delay generic map(N=>D12(i)) port map (D=> Fx(i), Q=> Gx(i), Clk=>Clk);
+    Hxd: delay generic map(N=>D23(i)) port map (D=> Gx(i), Q=> Hx(i), Clk=>Clk);
+    Ixd: delay generic map(N=>D34(i)) port map (D=> Hx(i), Q=> Ix(i), Clk=>Clk);
+  end generate;
 
-  Hx0d: delay generic map(N=>D23(0)) port map (D=> Gx(0), Q=> Hx(0), Clk=> Clk);
-  Hx1d: delay generic map(N=>D23(1)) port map (D=> Gx(1), Q=> Hx(1), Clk=> Clk);
-  Hx2d: delay generic map(N=>D23(2)) port map (D=> Gx(2), Q=> Hx(2), Clk=> Clk);
-  Hx3d: delay generic map(N=>D23(3)) port map (D=> Gx(3), Q=> Hx(3), Clk=> Clk);
-  Hx4d: delay generic map(N=>D23(4)) port map (D=> Gx(4), Q=> Hx(4), Clk=> Clk);
-  Hx5d: delay generic map(N=>D23(5)) port map (D=> Gx(5), Q=> Hx(5), Clk=> Clk);
-
-  Ix0d: delay generic map(N=>D34(0)) port map (D=> Hx(0), Q=> Ix(0), Clk=> Clk);
-  Ix1d: delay generic map(N=>D34(1)) port map (D=> Hx(1), Q=> Ix(1), Clk=> Clk);
-  Ix2d: delay generic map(N=>D34(2)) port map (D=> Hx(2), Q=> Ix(2), Clk=> Clk);
-  Ix3d: delay generic map(N=>D34(3)) port map (D=> Hx(3), Q=> Ix(3), Clk=> Clk);
-  Ix4d: delay generic map(N=>D34(4)) port map (D=> Hx(4), Q=> Ix(4), Clk=> Clk);
-  Ix5d: delay generic map(N=>D34(5)) port map (D=> Hx(5), Q=> Ix(5), Clk=> Clk);
-      
+  -- Hook in 20 dsp adders, configured for 2 cycle latency on all inputs.
+  addgen: for i in 0 to 19 generate
+	  process (Clk)
+	  begin if Clk'event and Clk = '1' then
+	  tempi(i) <= dspOneA(i) + dspOneB(i) + dspTwo(i);
+	  dspSum(i) <= tempi(i);
+--    add : adder3
+--      generic map (
+--        regOneA=> 0,
+--        regOneB=> 0,
+--        regInt=> 1,
+--        regTwo=> 1,
+--        regOut=> 1)
+--      port map (
+--        OneA=> dspOneA(i),
+--        OneB=> dspOneB(i),
+--        Two => dspTwo(i),
+--        Sum => dspSum(i),
+--        Clk => Clk);
+end if; end process;
+  end generate;
+  
   process (in0, in1, in2)
   begin
       -- Load x0 through x5 with the hexified inputs.
-      x0 <= hexify16 (in0 (15 downto  0));
-      x1 <= hexify16 (in0 (31 downto 16));
-      x2 <= hexify16 (in1 (15 downto  0));
-      x3 <= hexify16 (in1 (31 downto 16));
-      x4(7 downto 0) <= hexify (in2 (3 downto  0));
-      x4(15 downto 8) <= x"80";
-      x4(31 downto 16) <= x"0000";
-      x5 <= x"00000000";
+      xx(0) <= hexify16 (in0 (15 downto  0));
+      xx(1) <= hexify16 (in0 (31 downto 16));
+      xx(2) <= hexify16 (in1 (15 downto  0));
+      xx(3) <= hexify16 (in1 (31 downto 16));
+      xx(4)(7 downto 0) <= hexify (in2 (3 downto  0));
+      xx(4)(15 downto 8) <= x"80";
+      xx(4)(31 downto 16) <= x"0000";
+      xx(5) <= x"00000000";
   end process;
 
   process (Clk)
@@ -290,9 +319,6 @@ begin
     variable mask0 : word;
   begin
     if Clk'event and Clk = '1' then
-
-      Fx(0) <= x0;
-
       -- Piece together the delayed input data.
       Y := Xinit & Xinit & Xinit & Xinit;
       for i in 0 to 5 loop
@@ -311,7 +337,9 @@ begin
         Y(i + 32) := (Hx(i) and mask0) or mask1;
         Y(i + 48) := (Ix(i) and mask0) or mask1;
       end loop;
-      
+
+      Fx(0) <= xx(0); -- single cycle delay.
+
       -- I don't see why these are necessary but the simulator seems to need
       -- them.
       A(0) <= iA;
@@ -320,15 +348,13 @@ begin
       D(0) <= iD;
 
       -- Propagations.
+		Ba <= B(0 to 63);
+		Ca <= C(0 to 63);
+		Da <= D(0 to 63);
+		Bb <= Ba;
+		Cb <= Ca;
+		Db <= Da;
       for i in 0 to 63 loop
-        Ba(i) <= B(i);
-        Ca(i) <= C(i);
-        Da(i) <= D(i);
-
-        Bb(i) <= Ba(i);
-        Cb(i) <= Ca(i);
-        Db(i) <= Da(i);
-
         A(i+1) <= Db(i);
         C(i+1) <= Bb(i);
         D(i+1) <= Cb(i);
@@ -353,19 +379,54 @@ begin
           index := ((i * 7) mod 16) + 48;
           rolbits := S4 (i mod 4);
         end if;
-          
-        if i mod 16 < 6 then
+
+        if (index mod 16) < 6 then
           sumA1(i) <= func + kk(i);
           sumA2(i) <= Y(index) + A(i);
-        else
+          sumB(i) <= sumA1(i) + sumA2(i);
+        elsif ((index mod 16) < 8) or ((index mod 16) > 12) then
           -- Both Y(i) and k(i) are constants.
           sumA1(i) <= func;
           sumA2(i) <= A(i) + (Y(index) + kk(i));
+          sumB(i) <= sumA1(i) + sumA2(i);
         end if;
-        sumB(i) <= sumA1(i) + sumA2(i);
-
-        B(i+1) <= to_stdlogicvector (to_bitvector (sumB(i)) rol rolbits) + Bb(i);
+		  --bmon(i) <= func;
+        B(i+1) <= rotl (sumB(i), rolbits) + Bb(i);
       end loop;
     end if;
   end process;
+
+	bmon(0 to 63) <= sumb;
+
+  process (A, B, C, D, dspSum)
+    variable func : word;
+    variable j : integer;
+    variable i : integer;
+    variable index : integer;
+  begin
+    j := 0;
+    for i in 0 to 63 loop
+      if i < 16 then
+        func := FF (B(i), C(i), D(i));
+        index := i;
+      elsif i < 32 then
+        func := GG (B(i), C(i), D(i));
+        index := ((i * 5 + 1) mod 16) + 16;
+      elsif i < 48 then
+        func := HH (B(i), C(i), D(i));
+        index := ((i * 3 + 5) mod 16) + 32;
+      else
+        func := II (B(i), C(i), D(i));
+        index := ((i * 7) mod 16) + 48;
+      end if;
+
+      if ((index mod 16) >= 8) and ((index mod 16) <= 12) then
+        dspOneA(j) <= kk(i);
+        dspOneB(j) <= A(i);
+        sumB(i) <= dspSum(j);
+        j := j + 1;
+      end if;
+    end loop;
+  end process;
+  
 end Behavioral;

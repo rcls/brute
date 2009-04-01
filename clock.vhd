@@ -7,11 +7,11 @@
 -- \   \   \/     Version : 10.1.03
 --  \   \         Application : xaw2vhdl
 --  /   /         Filename : clock.vhd
--- /___/   /\     Timestamp : 03/29/2009 13:55:03
+-- /___/   /\     Timestamp : 03/31/2009 21:23:53
 -- \   \  /  \ 
 --  \___\/\___\ 
 --
---Command: xaw2vhdlclock.xaw
+--Command: xaw2vhdlclock
 --Design Name: clock
 --Device: xc3sd1800a-4fg676
 --
@@ -52,7 +52,7 @@ begin
    generic map( CLK_FEEDBACK => "NONE",
             CLKDV_DIVIDE => 2.0,
             CLKFX_DIVIDE => 25,
-            CLKFX_MULTIPLY => 29,
+            CLKFX_MULTIPLY => 28,
             CLKIN_DIVIDE_BY_2 => FALSE,
             CLKIN_PERIOD => 8.000,
             CLKOUT_PHASE_SHIFT => "NONE",

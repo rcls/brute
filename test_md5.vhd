@@ -30,16 +30,20 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 entity test_md5 is
 end test_md5;
 
+library work;
+use work.defs.all;
+
 architecture Behavioral of test_md5 is
    component md5 is
     Port (in0 : in  std_logic_vector (31 downto 0);
         in1 : in  std_logic_vector (31 downto 0);
         in2 : in  std_logic_vector (31 downto 0);
-        hit : out std_logic;
         Aout : out std_logic_vector (31 downto 0);
         Bout : out std_logic_vector (31 downto 0);
         Cout : out std_logic_vector (31 downto 0);
         Dout : out std_logic_vector (31 downto 0);
+		  		  bmon : out dataset (0 to 64);
+
         Clk : in std_logic);
    end component;
    signal in0 : std_logic_vector (31 downto 0);
@@ -49,10 +53,12 @@ architecture Behavioral of test_md5 is
    signal Bout : std_logic_vector (31 downto 0);
    signal Cout : std_logic_vector (31 downto 0);
    signal Dout : std_logic_vector (31 downto 0);
+	signal bmon : dataset (0 to 64);
+
    signal Clk : std_logic;
 begin
    UUT : md5 port map (in0=>in0,in1=>in1,in2=>in2,
-   Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk);
+   Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk,bmon=>bmon);
 
    process
    begin
