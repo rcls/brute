@@ -1,16 +1,19 @@
 
-CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64 -Wall -Winline -Werror -std=gnu99 
+CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64 -Wall -Winline -Werror -std=gnu99 -MMD -MP -MF.deps/$(subst /,:,$@).d
 
+vpath %.so /usr/lib64 
 
-md5log: /usr/lib64/libm.so
+all: md5log check collate brute
 
-check: /usr/lib64/libcrypto.so
+md5log: -lm
 
-collate: /usr/lib64/libcrypto.so
+check: jtag-io.o -lcrypto
 
-all: brute
+collate: jtag-io.o -lcrypto
 
-brute: brute.o -lpthread
+#all: brute
+
+brute: -lpthread
 #brute LIBS = -lcrypto
 
 %.s: %.c
@@ -29,7 +32,9 @@ brute-trunk: GCC=/home/ralph/dev/gcc/bin/gcc
 .PHONY: clean all
 clean:
 	rm -f *.o */.deps/*.d *.memlog *.i *.s
-	rm -f brute
+	rm -f brute collate check
 	rm -f *.a *.so *.so.*
 
 -include .deps/*.d
+
+%: %.o

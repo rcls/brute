@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
+#define inline __attribute__ ((always_inline))
+
 static inline uint32_t SWAP (uint32_t a)
 {
     return __builtin_bswap32 (a);
@@ -787,7 +789,8 @@ static void store (value_t * v,
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-static void * main_loop (void * ignore)
+static void main_loop (void * ignore) __attribute__ ((__noreturn__));
+static void main_loop (void * ignore)
 {
     gettimeofday (&last_time, NULL);
 

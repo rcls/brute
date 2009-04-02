@@ -35,24 +35,24 @@ use work.defs.all;
 
 architecture Behavioral of test_md5 is
    component md5 is
-    Port (in0 : in  std_logic_vector (31 downto 0);
-        in1 : in  std_logic_vector (31 downto 0);
-        in2 : in  std_logic_vector (31 downto 0);
-        Aout : out std_logic_vector (31 downto 0);
-        Bout : out std_logic_vector (31 downto 0);
-        Cout : out std_logic_vector (31 downto 0);
-        Dout : out std_logic_vector (31 downto 0);
+    Port (in0 : in  word;
+        in1 : in  word;
+        in2 : in  word;
+        Aout : out word;
+        Bout : out word;
+        Cout : out word;
+        Dout : out word;
 		  		  bmon : out dataset (0 to 64);
 
         Clk : in std_logic);
    end component;
-   signal in0 : std_logic_vector (31 downto 0);
-   signal in1 : std_logic_vector (31 downto 0);
-   signal in2 : std_logic_vector (31 downto 0);
-   signal Aout : std_logic_vector (31 downto 0);
-   signal Bout : std_logic_vector (31 downto 0);
-   signal Cout : std_logic_vector (31 downto 0);
-   signal Dout : std_logic_vector (31 downto 0);
+   signal in0 : word;
+   signal in1 : word;
+   signal in2 : word;
+   signal Aout : word;
+   signal Bout : word;
+   signal Cout : word;
+   signal Dout : word;
 	signal bmon : dataset (0 to 64);
 
    signal Clk : std_logic;
@@ -66,8 +66,8 @@ begin
       in1 <= x"00000000";
       in2 <= x"00000000";
       Clk <= '0';
-      -- First, clock 100 times so that outputs settle.
-      for i in 1 to 100 loop
+      -- First, clock 200 times so that outputs settle.
+      for i in 1 to 200 loop
          Clk <= '0';
          wait for 0.5 us;
          Clk <= '1';

@@ -1,15 +1,13 @@
 
-#include <stdint.h>
 #include <openssl/md5.h>
+#include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
-const uint64_t start_clock = 11984264945;
-const uint64_t finish_clock = 11989264940;
+#include "jtag-io.h"
 
-const uint32_t start_data[3] = { 0x47a1c013, 0x15809826, 0x42553b49 };
-const uint32_t finish_data[3] = { 0x09bd69af, 0x2ab2c650, 0x927c94de };
-
-void transform (uint32_t data[32])
+static void transform (uint32_t data[32])
 {
     unsigned char string[24];
     
@@ -33,13 +31,61 @@ void transform (uint32_t data[32])
 
 int main()
 {
+    open_serial();
+
+    printf ("ID Code is %08x\n", read_id());
+
+    uint64_t clock1 = read_clock();
+    uint64_t load_clock = clock1 + FREQ / 20;
+    load_md5 (clock1 + FREQ / 20, 0x01234567, 0x78abcdef, 0xfc9639da);
+    usleep (100000);
+
+    uint64_t sample_clock = load_clock + (FREQ / 10 / STAGES) * STAGES;
+    sample_md5 (sample_clock);
+    usleep (100000);
+
+    uint32_t sample[3];
+
+    bool got_load = false;
+    bool got_sample = false;
+
+    uint64_t clock2 = read_clock();
+
+    printf ("%lu to %lu [%lu iterations]\n", clock1, clock2, clock2 - clock1);
+
+    for (int i = 0; i != 256; ++i) {
+        uint64_t clock;
+        uint32_t data[3];
+        read_result (i, &clock, data);
+        printf ("%12lu %08x %08x %08x [%lu]%s\n",
+                clock, data[0], data[1], data[2], clock % 65,
+                (clock1 <= clock && clock <= clock2) ? " *" : "");
+        if (clock == load_clock)
+            got_load = true;
+
+        if (clock == sample_clock) {
+            got_sample = true;
+            memcpy (sample, data, sizeof (data));
+        }
+    }
+
+    if (!got_load)
+        printf_exit ("Failed to load data\n");
+    if (!got_sample)
+        printf_exit ("Failed to sample data\n");
+
     uint32_t data[3] = { 0x01234567, 0x78abcdef, 0xfc9639da };
-    for (uint64_t i = start_clock; i != finish_clock; i += 65) {
+    for (uint64_t i = load_clock; i != sample_clock; i += STAGES) {
         transform (data);
     }
 
-    printf ("%08x %08x %08x\n", data[0], data[1], data[2]);
+    printf ("Calced: %08x %08x %08x\n", data[0], data[1], data[2]);
+    printf ("Sample: %08x %08x %08x\n", sample[0], sample[1], sample[2]);
+
+    if (memcmp (data, sample, sizeof (data)) != 0)
+        printf_exit ("Mismatch\n");
+
+    jtag_reset();
+
     return 0;
 }
-
-

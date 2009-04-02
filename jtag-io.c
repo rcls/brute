@@ -2,25 +2,12 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
 
-// The two jtag commands
-enum {
-    USER1 = 2,
-    USER2 = 3,
-};
-
-// The bytes we send to USER1 as opcodes.
-enum {
-    op_read_result = 1,         // 8 opcode, 8 clock, returns 48 clock, 96 data.
-    op_load_md5 = 2,                    // 8 opcode, 48 clock, 96 data.
-    op_sample_md5 = 3,                  // 8 opcode, 48 clock.
-    op_read_clock = 4,                  // 8 clock, returns 48 data.
-};
+#include "jtag-io.h"
 
 
 // JTAG port bits.
@@ -35,7 +22,6 @@ enum {
 static int serial_port;
 
 
-static void perror_exit (const char * w) __attribute__ ((noreturn));
 void perror_exit (const char * w)
 {
     perror (w);
@@ -43,7 +29,6 @@ void perror_exit (const char * w)
 }
 
 
-static void printf_exit (const char * w, ...) __attribute__ ((noreturn));
 void printf_exit (const char * w, ...)
 {
     va_list args;
@@ -159,8 +144,7 @@ static void write_read (unsigned char * buf,
 }
 
 
-static void load_md5 (uint64_t clock,
-                      uint32_t load0, uint32_t load1, uint32_t load2)
+void load_md5 (uint64_t clock, uint32_t load0, uint32_t load1, uint32_t load2)
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -176,7 +160,7 @@ static void load_md5 (uint64_t clock,
     p = append_nq (p, load1, 32, false);
     p = append_nq (p, load2, 32, false);
     // The clock.
-    p = append_nq (p, clock, 48, false);
+    p = append_nq (p, clock - MATCH_DELAY, 48, false);
 
     p = append_nq (p, op_load_md5, 8, true); // ends in exit1-dr.
     p = append_tms (p, 1);                   // update-ir.
@@ -186,7 +170,7 @@ static void load_md5 (uint64_t clock,
 }
 
 
-static void sample_md5 (uint64_t clock)
+void sample_md5 (uint64_t clock)
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -198,7 +182,7 @@ static void sample_md5 (uint64_t clock)
     p = append_tms (p, 0);              // shift-dr.
 
     // The clock.
-    p = append_nq (p, clock, 48, false);
+    p = append_nq (p, clock - MATCH_DELAY, 48, false);
 
     p = append_nq (p, op_sample_md5, 8, true); // ends in exit1-dr.
     p = append_tms (p, 1);                   // update-ir.
@@ -208,7 +192,7 @@ static void sample_md5 (uint64_t clock)
 }
 
 
-static void read_result (int location, uint64_t * clock, uint32_t data[3])
+void read_result (int location, uint64_t * clock, uint32_t data[3])
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -233,7 +217,7 @@ static void read_result (int location, uint64_t * clock, uint32_t data[3])
 }
 
 
-static uint64_t read_clock (void)
+uint64_t read_clock (void)
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -254,7 +238,7 @@ static uint64_t read_clock (void)
 }
 
 
-static uint32_t read_id (void)
+uint32_t read_id (void)
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -283,7 +267,7 @@ static uint32_t read_id (void)
 }
 
 
-static void jtag_reset (void)
+void jtag_reset (void)
 {
     unsigned char obuf[100];
     unsigned char * p = obuf;
@@ -294,7 +278,7 @@ static void jtag_reset (void)
 }
 
 
-static void open_serial (void)
+void open_serial (void)
 {
     serial_port = open ("/dev/ttyUSB0", O_RDWR);
     if (serial_port < 0)
@@ -323,50 +307,6 @@ static void open_serial (void)
 
     if (tcflush (serial_port, TCIOFLUSH) < 0)
         perror_exit ("tcflush failed");
-}
 
-void yeah(void)
-{
-    load_md5 (0,0,0,0);
-/*     uint64_t clock; */
-/*     uint32_t data[3]; */
-/*     read_result (0, &clock, data); */
-/*     sample_md5 (0); */
-}
-
-
-int main()
-{
-    open_serial();
     jtag_reset();
-
-    printf ("ID Code is %08x\n", read_id());
-
-    uint64_t clock1 = read_clock();
-
-    // About 50 ms.
-    load_md5 (clock1 + 2500000, 0x01234567, 0x78abcdef, 0xfc9639da);
-
-    usleep (100000);
-
-    // About 150 ms.
-    sample_md5 (clock1 + 2500000 + 4999995);
-
-    usleep (100000);
-//    sleep (1);
-
-    uint64_t clock2 = read_clock();
-
-    printf ("%lu to %lu [%lu iterations]\n", clock1, clock2, clock2 - clock1);
-
-    for (int i = 0; i != 256; ++i) {
-        uint64_t clock;
-        uint32_t data[3];
-        read_result (i, &clock, data);
-        printf ("%12lu %08x %08x %08x [%lu]%s\n",
-                clock, data[0], data[1], data[2], clock % 65,
-                (clock1 <= clock && clock <= clock2) ? " *" : "");
-    }
-
-    return 0;
 }

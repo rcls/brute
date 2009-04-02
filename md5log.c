@@ -116,6 +116,7 @@ int main()
 //    run (0,0,0,0);
     unsigned char bytes[32];
     uint32_t words[4] = { 0xe040a4f0, 0x7d4a91b5, 0x694f8475, 0x4e2443bc };
+    //uint32_t words[4] = { 0, 0, 0, 0 };
 
     for (int i = 0; i != 17; ++i)
         bytes[i] = hexify (words[i/8] >> (4 * (i%8)));
