@@ -1,5 +1,11 @@
-ise/*
-*~
-check
-collate
+*.ace
 *.o
+*.svf
+*~
+.deps
+brute
+check
+clock.xaw
+collate
+ise/*
+md5log
