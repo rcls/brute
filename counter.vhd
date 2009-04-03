@@ -71,7 +71,7 @@ begin
       RSTOPMODE=> '0');
 
   match54 <= "000000" & match;
-  
+
   -- The hit subtractor.  PCIN comes from the counter, DAB comes from the match
   -- value.
   sub : DSP48A

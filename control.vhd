@@ -119,7 +119,8 @@ architecture Behavioral of control is
   signal global_count : word48_t;
   signal global_count_latch : word48_t;
   signal global_count_match : std_logic; -- Does global count match command?
-  signal load_match : std_logic; -- Global count match on load command.
+  signal load_match : std_logic; -- Buffered load command hit.
+  signal sample_match : std_logic; -- Buffered sample command hit.
 
 begin
 
@@ -215,7 +216,7 @@ begin
       command_edge(1) <= command_edge(0);
 
       -- Write into the hit ram on hits.
-      if command_edge(1) & global_count_match & command_op_sample = "111" then
+      if outA(23 downto 0) = x"000000"  or sample_match = '1' then
         hit_ram (conv_integer(hit_idx)) <= global_count & next2 & next1 & next0;
         hit_idx <= hit_idx + 1;
       end if;
@@ -227,9 +228,10 @@ begin
       if command_edge = "01" then
         global_count_latch <= global_count;
       end if;
-      
-      -- Buffer the load-match flag.
+
+      -- Buffer the load-match and sample-match flags.
       load_match <= command_edge(1) and global_count_match and command_op_load;
+      sample_match <= command_edge(1) and global_count_match and command_op_sample;
     end if;
   end process;
 

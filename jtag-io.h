@@ -5,7 +5,7 @@
 
 
 #define STAGES 194
-#define FREQ 130000000
+#define FREQ (150 * 1000 * 1000)
 #define MATCH_DELAY 2
 
 

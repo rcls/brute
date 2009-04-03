@@ -51,14 +51,17 @@ int main()
 
     uint64_t clock2 = read_clock();
 
-    printf ("%lu to %lu [%lu iterations]\n", clock1, clock2, clock2 - clock1);
+    printf ("Elapsed %lu to %lu [%lu cycles]\n",
+            clock1, clock2, clock2 - clock1);
+    printf ("Load %lu, sample %lu [%lu iterations]\n",
+            load_clock, sample_clock, (sample_clock - load_clock) / STAGES);
 
     for (int i = 0; i != 256; ++i) {
         uint64_t clock;
         uint32_t data[3];
         read_result (i, &clock, data);
         printf ("%12lu %08x %08x %08x [%lu]%s\n",
-                clock, data[0], data[1], data[2], clock % 65,
+                clock, data[0], data[1], data[2], clock % STAGES,
                 (clock1 <= clock && clock <= clock2) ? " *" : "");
         if (clock == load_clock)
             got_load = true;
