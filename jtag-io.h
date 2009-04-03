@@ -18,9 +18,9 @@ enum {
 // The bytes we send to USER1 as opcodes.
 enum {
     op_read_result = 1,         // 8 opcode, 8 clock, returns 48 clock, 96 data.
-    op_load_md5 = 2,                    // 8 opcode, 48 clock, 96 data.
-    op_sample_md5 = 3,                  // 8 opcode, 48 clock.
-    op_read_clock = 4,                  // 8 clock, returns 48 data.
+    op_load_md5 = 6,                    // 8 opcode, 48 clock, 96 data.
+    op_sample_md5 = 4,                  // 8 opcode, 48 clock.
+    op_read_clock = 0,                  // 8 clock, returns 48 data.
 };
 
 

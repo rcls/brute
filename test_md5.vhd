@@ -1,22 +1,4 @@
-----------------------------------------------------------------------------------
--- Company: 
--- Engineer: 
--- 
--- Create Date:    11:38:27 03/21/2009 
--- Design Name: 
--- Module Name:    test_md5 - Behavioral 
--- Project Name: 
--- Target Devices: 
--- Tool versions: 
--- Description: 
---
--- Dependencies: 
---
--- Revision: 
--- Revision 0.01 - File Created
--- Additional Comments: 
---
-----------------------------------------------------------------------------------
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
@@ -27,24 +9,24 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 --library UNISIM;
 --use UNISIM.VComponents.all;
 
-entity test_md5 is
-end test_md5;
-
 library work;
 use work.defs.all;
 
-architecture Behavioral of test_md5 is
-   component md5 is
-    Port (in0 : in  word_t;
-        in1 : in  word_t;
-        in2 : in  word_t;
-        Aout : out word_t;
-        Bout : out word_t;
-        Cout : out word_t;
-        Dout : out word_t;
-        --bmon : out dataset_t (0 to 64);
+entity test_md5 is
+end test_md5;
 
-        Clk : in std_logic);
+architecture Behavioral of test_md5 is
+  component md5 is
+    Port (in0 : in  word_t;
+          in1 : in  word_t;
+          in2 : in  word_t;
+          Aout : out word_t;
+          Bout : out word_t;
+          Cout : out word_t;
+          Dout : out word_t;
+          --bmon : out dataset_t (0 to 64);
+
+          Clk : in std_logic);
    end component;
    signal in0 : word_t;
    signal in1 : word_t;

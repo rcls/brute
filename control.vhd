@@ -52,8 +52,7 @@ architecture Behavioral of control is
   signal jtag_tdo2 : std_logic;
 
   -- We use a 48 bit cycle counter.
-  subtype clock_t is std_logic_vector (47 downto 0);
-  subtype vector_144 is std_logic_vector (143 downto 0);
+  subtype word144_t is std_logic_vector (143 downto 0);
   
   component md5 is
     port (in0 : in word_t;
@@ -70,6 +69,13 @@ architecture Behavioral of control is
           Clk : in std_logic);
   end component;
 
+  component counter is
+    port (count : out word48_t;
+          match : in word48_t;
+          hit : out std_logic;
+          clk : in std_logic);
+  end component;
+
   signal Clk : std_logic;
 
   signal next0 : word_t;                -- 3 input words to md5.
@@ -84,38 +90,36 @@ architecture Behavioral of control is
 
   -- 152 bit shift register attached to user1.  8 bit opcode plus 144 bits
   -- data.
-  -- opcode 1 : read result + 8 bit address
-  -- opcode 2 : load md5 - 48 bit clock count + 96 bits data.
-  -- opcode 3 : sample md5 - 48 bit clock count
-  -- opcode 4 : read clock count
+  -- bit 0 : read result + 8 bit address
+  -- bit 1 : load md5 - 48 bit clock count + 96 bits data.
+  -- bit 2 : sample md5 - 48 bit clock count
   signal command : std_logic_vector (151 downto 0);
   alias command_opcode : byte_t is command (151 downto 144);
-  alias command_clock : clock_t is command (143 downto 96);
+  alias command_clock : word48_t is command (143 downto 96);
   alias command_address : byte_t is command (143 downto 136);
   signal command_valid : std_logic := '0';
+
+  alias command_op_readram : std_logic is command (144);
+  alias command_op_load : std_logic is command (145);
+  alias command_op_sample : std_logic is command (146);
+  
   -- Detect rising edge with "01" and falling by "10"; we're crossing
   -- clock domains.
   signal command_edge : std_logic_vector (1 downto 0) := "00";
 
   -- The dual ported hit ram.
-  type hit_ram_t is array (255 downto 0) of vector_144;
+  type hit_ram_t is array (255 downto 0) of word144_t;
   signal hit_ram : hit_ram_t;
   -- Output buffer the bram needs.
-  signal hit_ram_o : vector_144;
+  signal hit_ram_o : word144_t;
   -- The hit ram allocation counter.
   signal hit_idx : byte_t;
 
   -- The 48 bit global cycle counter.
-  signal global_count : clock_t;
-  signal global_count_latch : clock_t;
+  signal global_count : word48_t;
+  signal global_count_latch : word48_t;
   signal global_count_match : std_logic; -- Does global count match command?
   signal load_match : std_logic; -- Global count match on load command.
-  
-   -- Intermediates for global cycle counter compare.
-  signal matchA : std_logic;
-  signal matchB : std_logic;
-  signal matchC : std_logic;
-  signal matchD : std_logic;
 
 begin
 
@@ -153,9 +157,9 @@ begin
         end if;
         if jtag_capture = '1' then
           command_valid <= '0';
-          -- If the previous command was a read-result then grab the data out
-          -- of the hit-ram.  Else grab the latched clock.
-          if command_opcode = x"01" then
+          -- If the previous command read ram then grab the data out of the
+          -- hit-ram.  Else grab the latched clock.
+          if command_op_readram = '1' then
             command <= x"00" & hit_ram_o;
           else
             command <= x"00000000000000000000000000" & global_count_latch;
@@ -167,15 +171,11 @@ begin
     end if;
   end process;
 
-  -- Run the global counter & command_valid edge detection.
-  process (Clk)
-  begin
-    if Clk'event and Clk = '1' then
-      global_count <= global_count + x"000000000001";
-      command_edge(0) <= command_valid;
-      command_edge(1) <= command_edge(0);
-    end if;
-  end process;
+  global_cnt : counter
+    port map (count => global_count,
+              match => command_clock,
+              hit => global_count_match,
+              Clk => Clk);
 
   m : md5 port map (in0 => next0,
                     in1 => next1,
@@ -189,45 +189,6 @@ begin
                     Dout => outD,
 
                     Clk => Clk);
-
-  -- Calculate global_count_match 2 cycles in advance; the comparator followed
-  -- by fanout seems to be a bottleneck.
-  process (Clk)
-  begin
-    if Clk'event and Clk = '1' then
-      if command_edge(1) & global_count(47 downto 36) =
-        '1' & command_clock(47 downto 36) then
-        matchA <= '1';
-      else
-        matchA <= '0';
-      end if;
-      if global_count(35 downto 24) = command_clock(35 downto 24) then
-        matchB <= '1';
-      else
-        matchB <= '0';
-      end if;
-      if global_count(23 downto 12) = command_clock(23 downto 12) then
-        matchC <= '1';
-      else
-        matchC <= '0';
-      end if;
-      if global_count(11 downto 0) = command_clock(11 downto 0) then
-        matchD <= '1';
-      else
-        matchD <= '0';
-      end if;
-      if matchA & matchB & matchC & matchD = "1111" then
-        global_count_match <= '1';
-      else
-        global_count_match <= '0';
-      end if;
-      if command_opcode & matchA & matchB & matchC & matchD = x"02f" then
-        load_match <= '1';
-      else
-        load_match <= '0';
-      end if;
-    end if;
-  end process;
 
   -- Calculate the next value to feed into the pipeline.
   process (outA, outB, outC, command, load_match)
@@ -243,35 +204,32 @@ begin
     end if;
   end process;
 
-  -- Write into the hit ram on hits, and on both commands 2 and 3.
+  -- Nice LEDs
+  LED <= hit_idx;
+
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      if outA(23 downto 0) = x"000000"
-        or (command_opcode(7 downto 1) = "0000001"
-            and global_count_match = '1') then
+      -- Run the command_valid edge.
+      command_edge(0) <= command_valid;
+      command_edge(1) <= command_edge(0);
+
+      -- Write into the hit ram on hits.
+      if command_edge(1) & global_count_match & command_op_sample = "111" then
         hit_ram (conv_integer(hit_idx)) <= global_count & next2 & next1 & next0;
         hit_idx <= hit_idx + 1;
       end if;
-    end if;
-  end process;
 
-  -- Nice LEDs
-  LED <= hit_idx;
-  
-  -- Read the hit_ram.
-  process (Clk)
-  begin
-    if Clk'event and Clk = '1' then
+      -- Read the hit_ram.
       hit_ram_o <= hit_ram (conv_integer (command_address));
-    end if;
-  end process;
 
-  -- On command_valid rising, latch the global counter.
-  process (Clk)
-  begin
-    if Clk'event and Clk = '1' and command_edge = "01" then
-      global_count_latch <= global_count;
+      -- On command_valid rising, latch the global counter.
+      if command_edge = "01" then
+        global_count_latch <= global_count;
+      end if;
+      
+      -- Buffer the load-match flag.
+      load_match <= command_edge(1) and global_count_match and command_op_load;
     end if;
   end process;
 

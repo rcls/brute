@@ -321,7 +321,7 @@ begin
         end if;
       end process;
     end generate;
-    dsp_round: if index (i) mod 16 >= 6 and index (i) mod 16 <= 12 generate
+    dsp_round: if index (i) mod 16 >= 6 and index (i) mod 16 <= 10 generate
       add : adder3
         port map (
           addend2=> func(i),
@@ -330,7 +330,7 @@ begin
           Sum => sum(i),
           Clk => Clk);
     end generate;
-    by_hand_round: if index (i) mod 16 > 12 generate
+    by_hand_round: if index (i) mod 16 > 10 generate
       process (Clk) -- Only kk is constant.
       begin
         if Clk'event and Clk = '1' then
