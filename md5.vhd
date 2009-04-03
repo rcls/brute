@@ -216,24 +216,14 @@ architecture Behavioral of md5 is
 
   component delay is
     generic (N : integer);
-    port (clk: in std_logic;
-          D: in std_logic_vector (31 downto 0);
-          Q: out std_logic_vector (31 downto 0));
+    port (clk: in std_logic; D: in word_t; Q: out word_t);
   end component;
 
   -- Compute (OneA + OneB) + Two using DSPs.  We do this for rounds 6 to 10
   -- of each stage.
   component adder3 is
-    generic (regOneA : integer;
-             regOneB : integer;
-             regTwo : integer;
-             regInt : integer;
-             regOut : integer);
-    port (OneA : in  STD_LOGIC_VECTOR (31 downto 0);
-          OneB : in  STD_LOGIC_VECTOR (31 downto 0);
-          Two : in  STD_LOGIC_VECTOR (31 downto 0);
-          Sum : out  STD_LOGIC_VECTOR (31 downto 0);
-          Clk : std_logic);
+    port (addend2 : in word_t; addend4 : in word_t; addend5 : in word_t;
+          Sum : out word_t; Clk : std_logic);
   end component;
 
   -- We really do want to buffer these; XST is too smart for it's
@@ -333,16 +323,10 @@ begin
     end generate;
     dsp_round: if index (i) mod 16 >= 6 and index (i) mod 16 <= 12 generate
       add : adder3
-        generic map (
-          regOneA=> 1,
-          regOneB=> 1,
-          regInt=> 1,
-          regTwo=> 1,
-          regOut=> 1)
         port map (
-          OneA=> kk(i), -- yy(i) is zero.
-          OneB=> Db(i-1), -- A(i) one cycle prior.
-          Two => func(i),
+          addend2=> func(i),
+          addend4=> kk(i), -- yy(i) is zero, kk(i) is constant.
+          addend5=> D(i-1), -- A(i) one round prior.
           Sum => sum(i),
           Clk => Clk);
     end generate;

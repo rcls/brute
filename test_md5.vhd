@@ -42,7 +42,7 @@ architecture Behavioral of test_md5 is
         Bout : out word_t;
         Cout : out word_t;
         Dout : out word_t;
-        bmon : out dataset_t (0 to 64);
+        --bmon : out dataset_t (0 to 64);
 
         Clk : in std_logic);
    end component;
@@ -58,7 +58,8 @@ architecture Behavioral of test_md5 is
    signal Clk : std_logic;
 begin
    UUT : md5 port map (in0=>in0,in1=>in1,in2=>in2,
-   Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk,bmon=>bmon);
+	--bmon=>bmon,
+   Aout=>Aout,Bout=>Bout,Cout=>Cout,Dout=>Dout,Clk=>Clk);
 
    process
    begin

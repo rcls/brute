@@ -14,77 +14,62 @@ use work.defs.all;
 
 -- Compute (OneA + OneB) + Two.
 entity adder3 is
-  generic (regOneA: integer;
-           regOneB: integer;
-           regTwo : integer;
-           regInt : integer;
-           regOut : integer);
-  port (OneA : in  word_t;
-        OneB : in  word_t;
-        Two  : in  word_t;
+  -- Addends with 2, 4 and 5 cycle latency to sum.
+  port (addend2 : in word_t;
+        addend4 : in word_t;
+        addend5 : in word_t;
         Sum  : out word_t;
         Clk  : in  std_logic);
 end adder3;
 
 architecture Behavioral of adder3 is
-  subtype word48_t is std_logic_vector (47 downto 0);
-  signal OneA54 : std_logic_vector (53 downto 0);
-  signal OneB48 : word48_t;
-  signal Two54 : std_logic_vector (53 downto 0);
-
-  signal OneSum : word48_t;
-  signal Sum48 : word48_t;
-
-  function en (r : integer) return std_logic is
-  begin
-    if r = 0 then
-      return '0';
-    else
-      return '1';
-    end if;
-  end function;    
+  signal addend2_36 : std_logic_vector (35 downto 0);
+  signal addend4_48 : word48_t;
+  signal addend5_36 : std_logic_vector (35 downto 0);
+  signal intermediate : word48_t;
+  signal sum48 : word48_t;
 
 begin
-  OneA54 <= "000000" & x"0000" & OneA;
-  OneB48 <= x"0000" & OneB;
-  Two54 <= "000000" & x"0000" & Two;
-  Sum <= Sum48 (31 downto 0);
+  addend2_36 <= x"0" & addend2;
+  addend4_48 <= x"0000" & addend4;
+  addend5_36 <= x"0" & addend5;
+
+  Sum <= sum48 (31 downto 0);
 
   AddOne : DSP48A
     generic map (
-      A0REG => regOneA,
-      A1REG => 0,
-      B0REG => regOneA,
-      B1REG => 0,
+      A0REG => 1,
+      A1REG => 1,
+      B0REG => 1,
+      B1REG => 1,
       CARRYINREG => 0,
       CARRYINSEL => "OPMODE5",
-      CREG => regOneB,
-      DREG => regOneA,
-      MREG => 1, -- Don't care, multiplier not in use.
+      CREG => 1,
+      DREG => 1,
+      MREG => 1, -- Dummy, multiplier not in use.
       OPMODEREG => 0, -- Constant anyway.
-      PREG => regInt, -- Register output.
-      RSTTYPE => "SYNC" -- Don't use it anyway.
-      )
+      PREG => 1, -- Register output.
+      RSTTYPE => "SYNC") -- Don't use it anyway.
     port map (
       BCOUT=> open,
       CARRYOUT=> open,
-      P=>open, -- We use PCOUT.
-      PCOUT=> OneSum,
+      P=> intermediate,
+      PCOUT=> open,
 
-      A=> OneA54 (35 downto 18),
-      B=> OneA54 (17 downto 0),
-      C=> OneB48,
+      A=> addend5_36 (35 downto 18),
+      B=> addend5_36 (17 downto 0),
+      C=> addend4_48,
       CARRYIN=> '0',
-      CEA=> en(regOneA),
-      CEB=> en(regOneA),
-      CEC=> en(regOneB),
+      CEA=> '1',
+      CEB=> '1',
+      CEC=> '1',
       CECARRYIN=>'0', -- Carry in reg not used.
-      CED=> en(regOneA),
+      CED=> '0',
       CEM=> '0',
       CEOPMODE=> '0',
-      CEP=> en(regInt),
+      CEP=> '1',
       CLK=> Clk,
-      D=> OneA54 (53 downto 36),
+      D=> "00" & x"0000",
       OPMODE=> "00011111", -- add/add / carry0/no-pre-add / C port/DBA
       PCIN=> x"000000000000",
       RSTA=> '0',
@@ -94,46 +79,44 @@ begin
       RSTD=> '0',
       RSTM=> '0',
       RSTP=> '0',
-      RSTOPMODE=> '0'
-      );
+      RSTOPMODE=> '0');
 
   AddTwo : DSP48A
     generic map (
-      A0REG => regTwo,
-      A1REG => 0,
-      B0REG => regTwo,
-      B1REG => 0,
+      A0REG => 0,
+      A1REG => 1,
+      B0REG => 0,
+      B1REG => 1,
       CARRYINREG => 0,
       CARRYINSEL => "OPMODE5",
-      CREG => 1, -- C not used
-      DREG => regTwo,
-      MREG => 1, -- Don't care, multiplier not in use.
+      CREG => 1,
+      DREG => 1,
+      MREG => 1, -- Dummy, multiplier not in use.
       OPMODEREG => 0, -- Constant anyway.
-      PREG => regOut, -- Register output.
-      RSTTYPE => "SYNC" -- Don't use it anyway.
-      )
+      PREG => 1, -- Register output.
+      RSTTYPE => "SYNC") -- Don't use it anyway.
     port map (
       BCOUT=> open,
       CARRYOUT=> open,
       P=> Sum48,
       PCOUT=> open,
 
-      A=> Two54 (35 downto 18),
-      B=> Two54 (17 downto 0),
-      C=> x"000000000000",
+      A=> addend2_36 (35 downto 18),
+      B=> addend2_36 (17 downto 0),
+      C=> intermediate,
       CARRYIN=> '0',
-      CEA=> en(regTwo),
-      CEB=> en(regTwo),
-      CEC=> '0',
-      CECARRYIN=>'0', -- Carry in reg not used.
-      CED=> en(regTwo),
+      CEA=> '1',
+      CEB=> '1',
+      CEC=> '1',
+      CECARRYIN=> '0', -- Carry in reg not used.
+      CED=> '0',
       CEM=> '0',
       CEOPMODE=> '0',
-      CEP=> en(regOut),
+      CEP=> '1',
       CLK=> Clk,
-      D=> Two54 (53 downto 36),
-      OPMODE=> "00010111", -- add/add / carry0/no-pre-add / PCin / DBA
-      PCIN=> OneSum,
+      D=> "00" & x"0000",
+      OPMODE=> "00011111", -- add/add / carry0/no-pre-add / C port / DBA
+      PCIN=> x"000000000000",
       RSTA=> '0',
       RSTB=> '0',
       RSTC=> '0',
@@ -141,7 +124,6 @@ begin
       RSTD=> '0',
       RSTM=> '0',
       RSTP=> '0',
-      RSTOPMODE=> '0'
-      );
+      RSTOPMODE=> '0');
 
 end Behavioral;
