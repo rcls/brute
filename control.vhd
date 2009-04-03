@@ -8,9 +8,12 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 library UNISIM;
 use UNISIM.VComponents.all;
 
+library work;
+use work.defs.all;
+
 entity control is
   port (Clk_125MHz : in std_logic;
-        LED : out std_logic_vector (7 downto 0));
+        LED : out byte_t);
 end control;
 
 architecture Behavioral of control is
@@ -48,8 +51,6 @@ architecture Behavioral of control is
   signal jtag_tdo1 : std_logic;
   signal jtag_tdo2 : std_logic;
 
-  subtype word_t is std_logic_vector (31 downto 0);
-  subtype byte_t is std_logic_vector (7 downto 0);
   -- We use a 48 bit cycle counter.
   subtype clock_t is std_logic_vector (47 downto 0);
   subtype vector_144 is std_logic_vector (143 downto 0);
@@ -111,10 +112,10 @@ architecture Behavioral of control is
   signal load_match : std_logic; -- Global count match on load command.
   
    -- Intermediates for global cycle counter compare.
-    signal matchA : std_logic;
-    signal matchB : std_logic;
-    signal matchC : std_logic;
-    signal matchD : std_logic;
+  signal matchA : std_logic;
+  signal matchB : std_logic;
+  signal matchC : std_logic;
+  signal matchD : std_logic;
 
 begin
 

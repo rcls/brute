@@ -35,25 +35,25 @@ use work.defs.all;
 
 architecture Behavioral of test_md5 is
    component md5 is
-    Port (in0 : in  word;
-        in1 : in  word;
-        in2 : in  word;
-        Aout : out word;
-        Bout : out word;
-        Cout : out word;
-        Dout : out word;
-		  		  bmon : out dataset (0 to 64);
+    Port (in0 : in  word_t;
+        in1 : in  word_t;
+        in2 : in  word_t;
+        Aout : out word_t;
+        Bout : out word_t;
+        Cout : out word_t;
+        Dout : out word_t;
+        bmon : out dataset_t (0 to 64);
 
         Clk : in std_logic);
    end component;
-   signal in0 : word;
-   signal in1 : word;
-   signal in2 : word;
-   signal Aout : word;
-   signal Bout : word;
-   signal Cout : word;
-   signal Dout : word;
-	signal bmon : dataset (0 to 64);
+   signal in0 : word_t;
+   signal in1 : word_t;
+   signal in2 : word_t;
+   signal Aout : word_t;
+   signal Bout : word_t;
+   signal Cout : word_t;
+   signal Dout : word_t;
+   signal bmon : dataset_t (0 to 64);
 
    signal Clk : std_logic;
 begin

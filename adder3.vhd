@@ -9,18 +9,21 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 library UNISIM;
 use UNISIM.VComponents.all;
 
+library work;
+use work.defs.all;
+
 -- Compute (OneA + OneB) + Two.
 entity adder3 is
-  generic (regOneA : integer;
-           regOneB : integer;
+  generic (regOneA: integer;
+           regOneB: integer;
            regTwo : integer;
            regInt : integer;
            regOut : integer);
-  port ( OneA : in  STD_LOGIC_VECTOR (31 downto 0);
-         OneB : in  STD_LOGIC_VECTOR (31 downto 0);
-         Two : in  STD_LOGIC_VECTOR (31 downto 0);
-         Sum : out  STD_LOGIC_VECTOR (31 downto 0);
-         Clk : std_logic);
+  port (OneA : in  word_t;
+        OneB : in  word_t;
+        Two  : in  word_t;
+        Sum  : out word_t;
+        Clk  : in  std_logic);
 end adder3;
 
 architecture Behavioral of adder3 is
@@ -57,7 +60,7 @@ begin
       CARRYINSEL => "OPMODE5",
       CREG => regOneB,
       DREG => regOneA,
-      MREG => 0, -- Don't care, multiplier not in use.
+      MREG => 1, -- Don't care, multiplier not in use.
       OPMODEREG => 0, -- Constant anyway.
       PREG => regInt, -- Register output.
       RSTTYPE => "SYNC" -- Don't use it anyway.
@@ -102,9 +105,9 @@ begin
       B1REG => 0,
       CARRYINREG => 0,
       CARRYINSEL => "OPMODE5",
-      CREG => 0, -- C not used
+      CREG => 1, -- C not used
       DREG => regTwo,
-      MREG => 0, -- Don't care, multiplier not in use.
+      MREG => 1, -- Don't care, multiplier not in use.
       OPMODEREG => 0, -- Constant anyway.
       PREG => regOut, -- Register output.
       RSTTYPE => "SYNC" -- Don't use it anyway.

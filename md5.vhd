@@ -13,25 +13,23 @@ library work;
 use work.defs.all;
 
 entity md5 is
-  Port (in0 : in  word;
-        in1 : in  word;
-        in2 : in  word;
+  Port (in0 : in  word_t;
+        in1 : in  word_t;
+        in2 : in  word_t;
         --hit : out std_logic;            -- Do we have n zeros for some n.
-        Aout : out word;
-        Bout : out word;
-        Cout : out word;
-        Dout : out word;
-        --bmon : out dataset (0 to 64);
+        Aout : out word_t;
+        Bout : out word_t;
+        Cout : out word_t;
+        Dout : out word_t;
+        --bmon : out dataset_t (0 to 64);
         Clk : in std_logic);
 end md5;
 
 
 architecture Behavioral of md5 is
-  --subtype word is std_logic_vector (31 downto 0);
-  subtype nibble_t is std_logic_vector (3 downto 0);
-  subtype byte_t is std_logic_vector (7 downto 0);
+  --subtype word_t is std_logic_vector (31 downto 0);
   
-  --type dataset is array (natural range <>) of word;
+  --type dataset_t is array (natural range <>) of word_t;
 
   type iarray is array (natural range <>) of integer;
 
@@ -46,7 +44,7 @@ architecture Behavioral of md5 is
     4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
     6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21);
 
-  constant KK : dataset (0 to 63) := (
+  constant KK : dataset_t (0 to 63) := (
     x"d76aa478", x"e8c7b756", x"242070db", x"c1bdceee",
     x"f57c0faf", x"4787c62a", x"a8304613", x"fd469501",
     x"698098d8", x"8b44f7af", x"ffff5bb1", x"895cd7be",
@@ -77,8 +75,8 @@ architecture Behavioral of md5 is
     return result;
   end hexify;
 
-  function hexify16 (n : std_logic_vector (15 downto 0)) return word is
-    variable result : word;
+  function hexify16 (n : std_logic_vector (15 downto 0)) return word_t is
+    variable result : word_t;
   begin
     result( 7 downto  0) := hexify (n ( 3 downto  0));
     result(15 downto  8) := hexify (n ( 7 downto  4));
@@ -87,8 +85,8 @@ architecture Behavioral of md5 is
     return result;
   end hexify16;
 
-  function rotl (x : word; n : integer) return word is
---    variable result : word;
+  function rotl (x : word_t; n : integer) return word_t is
+--    variable result : word_t;
   begin
     if n = 0 then
       return x;
@@ -97,30 +95,30 @@ architecture Behavioral of md5 is
     end if;
   end rotl;
 
-  function FF(x : word; y : word; z : word)
-    return word is
-    variable r : word := (x and y) or (z and not x);
+  function FF(x : word_t; y : word_t; z : word_t)
+    return word_t is
+    variable r : word_t := (x and y) or (z and not x);
   begin
     return r;
   end FF;
 
-  function GG(x : word; y : word; z : word)
-    return word is
-    variable r : word := (z and x) or (y and not z);
+  function GG(x : word_t; y : word_t; z : word_t)
+    return word_t is
+    variable r : word_t := (z and x) or (y and not z);
   begin
     return r;
   end GG;
 
-  function HH(x : word; y : word; z : word)
-    return word is
-    variable r : word := x xor y xor z;
+  function HH(x : word_t; y : word_t; z : word_t)
+    return word_t is
+    variable r : word_t := x xor y xor z;
   begin
     return r;
   end HH;
 
-  function II(x : word; y : word; z : word)
-    return word is
-    variable r : word := y xor (x or not z);
+  function II(x : word_t; y : word_t; z : word_t)
+    return word_t is
+    variable r : word_t := y xor (x or not z);
   begin
     return r;
   end II;
@@ -181,40 +179,40 @@ architecture Behavioral of md5 is
     end if;
   end;
   
-  signal A : dataset (0 to 64);
-  signal B : dataset (0 to 64);
-  signal C : dataset (0 to 64);
-  signal D : dataset (0 to 64);
+  signal A : dataset_t (0 to 64);
+  signal B : dataset_t (0 to 64);
+  signal C : dataset_t (0 to 64);
+  signal D : dataset_t (0 to 64);
 
-  --signal Aa : dataset (0 to 63);
-  --signal Ab : dataset (0 to 63);
-  signal Ba : dataset (0 to 63);
-  signal Bb : dataset (0 to 63);
-  signal Ca : dataset (0 to 63);
-  signal Cb : dataset (0 to 63);
-  signal Da : dataset (0 to 63);
-  signal Db : dataset (0 to 63);
+  --signal Aa : dataset_t (0 to 63);
+  --signal Ab : dataset_t (0 to 63);
+  signal Ba : dataset_t (0 to 63);
+  signal Bb : dataset_t (0 to 63);
+  signal Ca : dataset_t (0 to 63);
+  signal Cb : dataset_t (0 to 63);
+  signal Da : dataset_t (0 to 63);
+  signal Db : dataset_t (0 to 63);
 
-  signal func : dataset (0 to 63);
-  signal sum  : dataset (0 to 63);
-  signal sum1 : dataset (0 to 63);
-  signal sum2 : dataset (0 to 63);
+  signal func : dataset_t (0 to 63);
+  signal sum  : dataset_t (0 to 63);
+  signal sum1 : dataset_t (0 to 63);
+  signal sum2 : dataset_t (0 to 63);
   
-  signal Fx : dataset (0 to 5);
-  signal Gx : dataset (0 to 5);
-  signal Hx : dataset (0 to 5);
-  signal Ix : dataset (0 to 5);
+  signal Fx : dataset_t (0 to 5);
+  signal Gx : dataset_t (0 to 5);
+  signal Hx : dataset_t (0 to 5);
+  signal Ix : dataset_t (0 to 5);
 
   -- Formatted input.
-  signal xx : dataset (0 to 5);
+  signal xx : dataset_t (0 to 5);
 
   -- Delayed inputs, unpermuted.
-  signal yy : dataset (0 to 63);
+  signal yy : dataset_t (0 to 63);
 
-  constant iA : word := x"67452301";
-  constant iB : word := x"efcdab89";
-  constant iC : word := x"98badcfe";
-  constant iD : word := x"10325476";
+  constant iA : word_t := x"67452301";
+  constant iB : word_t := x"efcdab89";
+  constant iC : word_t := x"98badcfe";
+  constant iD : word_t := x"10325476";
 
   component delay is
     generic (N : integer);
@@ -245,7 +243,7 @@ architecture Behavioral of md5 is
   --attribute keep of Bout : signal is "true";
   --attribute keep of Cout : signal is "true";
   --attribute keep of Dout : signal is "true";
-  --signal tempi : dataset (0 to 19);
+  --signal tempi : dataset_t (0 to 19);
 begin
 
   A(0) <= iA;
@@ -336,14 +334,14 @@ begin
     dsp_round: if index (i) mod 16 >= 6 and index (i) mod 16 <= 12 generate
       add : adder3
         generic map (
-          regOneA=> 0,
-          regOneB=> 0,
+          regOneA=> 1,
+          regOneB=> 1,
           regInt=> 1,
           regTwo=> 1,
           regOut=> 1)
         port map (
           OneA=> kk(i), -- yy(i) is zero.
-          OneB=> A(i),
+          OneB=> Db(i-1), -- A(i) one cycle prior.
           Two => func(i),
           Sum => sum(i),
           Clk => Clk);
@@ -361,7 +359,7 @@ begin
   end generate;
 
   process (Clk)
-    variable func : word;
+    variable func : word_t;
   begin
     if Clk'event and Clk = '1' then
 

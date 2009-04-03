@@ -27,10 +27,13 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 --library UNISIM;
 --use UNISIM.VComponents.all;
 
+library work;
+use work.defs.all;
+
 entity delay is
     generic (N : integer);
-    Port ( D : in  STD_LOGIC_VECTOR (31 downto 0);
-           Q : out  STD_LOGIC_VECTOR (31 downto 0);
+    Port ( D : in  word_t;
+           Q : out  word_t;
            Clk : in std_logic);
 end delay;
 
@@ -40,9 +43,7 @@ architecture Behavioral of delay is
   
   signal count : integer range 0 to limit := 0;
 
-  subtype word_t is std_logic_vector (31 downto 0);
-  type mem_t is array (limit downto 0) of word_t;
-  signal mem : mem_t;
+  signal mem : dataset_t (limit downto 0);
   signal reg : word_t;
   attribute ram_style : string;
   attribute ram_style of mem : signal is "block";
