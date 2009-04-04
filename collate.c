@@ -27,11 +27,13 @@ static bool match (const uint32_t A[3], const uint32_t B[3])
 static void finish (result_t * MA, result_t * MB)
 {
     printf ("HIT!!!!\n");
-    printf ("%12lu %08x %08x %08x [%3lu]\n",
+    printf ("%12lu %08x %08x %08x %c[%3lu]\n",
             MA->clock, MA->data[0], MA->data[1], MA->data[2],
+            'A' + MA->ram_slot % PIPELINES,
             MA->clock % STAGES);
-    printf ("%12lu %08x %08x %08x [%3lu]\n",
+    printf ("%12lu %08x %08x %08x %c[%3lu]\n",
             MB->clock, MB->data[0], MB->data[1], MB->data[2],
+            'A' + MB->ram_slot % PIPELINES,
             MB->clock % STAGES);
 
     result_t CA = *(MA->channel_prev);
@@ -95,6 +97,7 @@ static void add_result (result_t * result)
     static result_t * hash[256];
 
     int channel = result->clock % STAGES;
+    channel = channel * PIPELINES + result->ram_slot % PIPELINES;
 
     if (channel_last[channel] == NULL) {
         if ((result->data[0] & 0xfffffff) == 0)
@@ -109,8 +112,9 @@ static void add_result (result_t * result)
     r->channel_prev = channel_last[channel];
     channel_last[channel] = r;
 
-    printf ("%12lu %08x %08x %08x [%3u]%s\n",
-            r->clock, r->data[0], r->data[1], r->data[2], channel,
+    printf ("%12lu %08x %08x %08x %c[%3u]%s\n",
+            r->clock, r->data[0], r->data[1], r->data[2], channel / PIPELINES,
+            'A' + channel % PIPELINES,
             r->channel_prev ? "" : " - first on channel");
     if (r->channel_prev == NULL)
         return;
