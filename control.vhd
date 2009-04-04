@@ -32,7 +32,7 @@ architecture Behavioral of control is
           UPDATE : out STD_ULOGIC;
           TDO1 : in STD_ULOGIC;
           TDO2 : in STD_ULOGIC);
-  end component; 
+  end component;
 
   component Clock
     port (CLKIN_IN : in STD_LOGIC; CLKFX_OUT : out STD_LOGIC);
@@ -53,12 +53,12 @@ architecture Behavioral of control is
 
   -- We use a 48 bit cycle counter.
   subtype word144_t is std_logic_vector (143 downto 0);
-  
+
   component md5 is
     port (in0 : in word_t;
           in1 : in word_t;
           in2 : in word_t;
-          
+
           --hit : out std_logic;
 
           Aout : out word_t;
@@ -101,7 +101,7 @@ architecture Behavioral of control is
   alias command_op_readram : std_logic is command (144);
   alias command_op_load : std_logic is command (145);
   alias command_op_sample : std_logic is command (146);
-  
+
   -- Detect rising edge with "01" and falling by "10"; we're crossing
   -- clock domains.
   signal command_edge : std_logic_vector (1 downto 0) := "00";
@@ -115,7 +115,7 @@ architecture Behavioral of control is
   signal hit_idx : byte_t;
   -- Did we hit?
   signal hit : std_logic;
-  
+
   -- The 48 bit global cycle counter.
   signal global_count : word48_t;
   signal global_count_latch : word48_t;
@@ -237,7 +237,7 @@ begin
         next1 <= outB;
         next2 <= outC;
       end if;
-      
+
     end if;
   end process;
 

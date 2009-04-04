@@ -1,22 +1,3 @@
-----------------------------------------------------------------------------------
--- Company: 
--- Engineer: 
--- 
--- Create Date:    07:27:10 03/28/2009 
--- Design Name: 
--- Module Name:    delay - Behavioral 
--- Project Name: 
--- Target Devices: 
--- Tool versions: 
--- Description: 
---
--- Dependencies: 
---
--- Revision: 
--- Revision 0.01 - File Created
--- Additional Comments: 
---
-----------------------------------------------------------------------------------
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
@@ -40,7 +21,7 @@ end delay;
 architecture Behavioral of delay is
 
   constant limit : integer := N - 3;
-  
+
   signal count : integer range 0 to limit := 0;
 
   signal mem : dataset_t (limit downto 0);

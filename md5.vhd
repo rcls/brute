@@ -28,7 +28,7 @@ end md5;
 
 architecture Behavioral of md5 is
   --subtype word_t is std_logic_vector (31 downto 0);
-  
+
   --type dataset_t is array (natural range <>) of word_t;
 
   type iarray is array (natural range <>) of integer;
@@ -178,7 +178,7 @@ architecture Behavioral of md5 is
       return ((n * 7) mod 16) + 48;
     end if;
   end;
-  
+
   signal A : dataset_t (0 to 64);
   signal B : dataset_t (0 to 64);
   signal C : dataset_t (0 to 64);
@@ -197,7 +197,7 @@ architecture Behavioral of md5 is
   signal sum  : dataset_t (0 to 63);
   signal sum1 : dataset_t (0 to 63);
   signal sum2 : dataset_t (0 to 63);
-  
+
   signal Fx : dataset_t (0 to 5);
   signal Gx : dataset_t (0 to 5);
   signal Hx : dataset_t (0 to 5);
@@ -215,7 +215,7 @@ architecture Behavioral of md5 is
   constant iD : word_t := x"10325476";
 
   constant iAneg : word_t := x"00000000" - iA;
-  
+
   component delay is
     generic (N : integer);
     port (clk: in std_logic; D: in word_t; Q: out word_t);
@@ -248,7 +248,7 @@ begin
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)
   begin
-    if Clk'event and Clk = '1' then   
+    if Clk'event and Clk = '1' then
       Aout <= A(64) + iA;
       Bout <= B(64) + iB;
       Cout <= C(64) + iC;
@@ -267,7 +267,7 @@ begin
     Hxd: delay generic map(N=>D23(i)) port map (D=> Gx(i), Q=> Hx(i), Clk=>Clk);
     Ixd: delay generic map(N=>D34(i)) port map (D=> Hx(i), Q=> Ix(i), Clk=>Clk);
   end generate;
-  
+
   -- Load x0 through x5 with the hexified inputs.
   xx(0) <= hexify16 (in0 (15 downto  0));
   xx(1) <= hexify16 (in0 (31 downto 16));
