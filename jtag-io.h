@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 
-#define STAGES 194
+#define STAGES 195
 #define FREQ (150 * 1000 * 1000)
 #define MATCH_DELAY 2
 

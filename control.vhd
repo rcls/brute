@@ -82,7 +82,6 @@ architecture Behavioral of control is
   signal next1 : word_t;
   signal next2 : word_t;
 
-  --signal hit : std_logic;               -- Hit signal from md5.
   signal outA : word_t;                 -- 4 output words from md5.
   signal outB : word_t;
   signal outC : word_t;
@@ -114,12 +113,15 @@ architecture Behavioral of control is
   signal hit_ram_o : word144_t;
   -- The hit ram allocation counter.
   signal hit_idx : byte_t;
-
+  -- Did we hit?
+  signal hit : std_logic;
+  
   -- The 48 bit global cycle counter.
   signal global_count : word48_t;
   signal global_count_latch : word48_t;
   signal global_count_match : std_logic; -- Does global count match command?
   signal load_match : std_logic; -- Buffered load command hit.
+  signal sample_match0 : std_logic; -- Buffered sample command hit.
   signal sample_match : std_logic; -- Buffered sample command hit.
 
 begin
@@ -191,20 +193,6 @@ begin
 
                     Clk => Clk);
 
-  -- Calculate the next value to feed into the pipeline.
-  process (outA, outB, outC, command, load_match)
-  begin
-    if load_match = '1' then
-      next0 <= command (31 downto 0);
-      next1 <= command (63 downto 32);
-      next2 <= command (95 downto 64);
-    else
-      next0 <= outA;
-      next1 <= outB;
-      next2 <= outC;
-    end if;
-  end process;
-
   -- Nice LEDs
   LED <= hit_idx;
 
@@ -216,7 +204,7 @@ begin
       command_edge(1) <= command_edge(0);
 
       -- Write into the hit ram on hits.
-      if outA(23 downto 0) = x"000000"  or sample_match = '1' then
+      if hit = '1' then
         hit_ram (conv_integer(hit_idx)) <= global_count & next2 & next1 & next0;
         hit_idx <= hit_idx + 1;
       end if;
@@ -229,9 +217,27 @@ begin
         global_count_latch <= global_count;
       end if;
 
-      -- Buffer the load-match and sample-match flags.
+      -- Buffer the load-match, sample-match and hit.  The write takes place
+      -- the cycle after the load mux, so be careful about that.
       load_match <= command_edge(1) and global_count_match and command_op_load;
       sample_match <= command_edge(1) and global_count_match and command_op_sample;
+      if outA(23 downto 0) = x"000000" or sample_match = '1' then
+        hit <= '1';
+      else
+        hit <= '0';
+      end if;
+
+      -- Calculate the next value to feed into the pipeline.
+      if load_match = '1' then
+        next0 <= command (31 downto 0);
+        next1 <= command (63 downto 32);
+        next2 <= command (95 downto 64);
+      else
+        next0 <= outA;
+        next1 <= outB;
+        next2 <= outC;
+      end if;
+      
     end if;
   end process;
 

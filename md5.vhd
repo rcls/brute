@@ -214,6 +214,8 @@ architecture Behavioral of md5 is
   constant iC : word_t := x"98badcfe";
   constant iD : word_t := x"10325476";
 
+  constant iAneg : word_t := x"00000000" - iA;
+  
   component delay is
     generic (N : integer);
     port (clk: in std_logic; D: in word_t; Q: out word_t);
@@ -242,9 +244,6 @@ begin
   D(0) <= iD;
 
   --bmon(0 to 5) <= Fx;
-
-  -- We flag outputs with 24 zeros.
-  --hit <= '1' when A(64)(23 downto 0) = iAneg(23 downto 0) else '0';
 
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)
@@ -353,6 +352,13 @@ begin
       B(0) <= iB;
       C(0) <= iC;
       D(0) <= iD;
+
+      -- We flag outputs with 24 zeros.
+--      if A(64)(23 downto 0) = iAneg(23 downto 0) then
+--        hit <= '1';
+--    else
+--      hit <= '0';
+--    end if;
 
       -- Propagations.
       Ba <= B(0 to 63);
