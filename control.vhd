@@ -13,7 +13,7 @@ use work.defs.all;
 
 entity control is
   port (Clk_125MHz : in std_logic;
-        LED : out byte_t);
+      LED : out byte_t);
 end control;
 
 architecture Behavioral of control is
@@ -53,23 +53,32 @@ architecture Behavioral of control is
 
   signal Clk : std_logic;
 
-  signal md5_next : word96_t;           -- 3 input words to md5.
-  signal md5_output : word128_t;        -- 4 output words from md5.
+  signal A_next : word96_t;           -- 3 input words to md5.
+  signal B_next : word96_t;
+  signal A_output : word128_t;        -- 4 output words from md5.
+  signal B_output : word128_t;
 
   -- 152 bit shift register attached to user1.
   -- 8 bit opcode / 48 bit clock / 96 bits data  or
   -- 8 bit opcode / 8 bit address.
   -- Opcode is bitmask:
-  -- bit 0 : read result + 8 bit address
-  -- bit 1 : load md5 - 48 bit clock count + 96 bits data.
-  -- bit 2 : sample md5 - 48 bit clock count
+  -- bit 0 : read result + 8 bit address (pipeline A)
+  -- bit 1 : load md5 - 48 bit clock count + 96 bits data. (pipeline A)
+  -- bit 2 : sample md5 - 48 bit clock count (pipeline A)
+  -- bit 4 : read result + 8 bit address (pipeline B)
+  -- bit 5 : load md5 - 48 bit clock count + 96 bits data. (pipeline B)
+  -- bit 6 : sample md5 - 48 bit clock count (pipeline B)
   signal command : std_logic_vector (151 downto 0);
 
   signal command_valid : std_logic := '0';
 
-  alias command_op_readram : std_logic is command (144);
-  alias command_op_load : std_logic is command (145);
-  alias command_op_sample : std_logic is command (146);
+  alias A_op_readram : std_logic is command (144);
+  alias A_op_load : std_logic is command (145);
+  alias A_op_sample : std_logic is command (146);
+
+  alias B_op_readram : std_logic is command (148);
+  alias B_op_load : std_logic is command (149);
+  alias B_op_sample : std_logic is command (150);
 
   -- Detect rising edge with "01" and falling by "10"; we're crossing
   -- clock domains.
@@ -77,21 +86,26 @@ architecture Behavioral of control is
 
   -- The dual ported hit ram.
   type hit_ram_t is array (255 downto 0) of word144_t;
-  signal hit_ram : hit_ram_t;
+  signal A_hit_ram : hit_ram_t;
+  signal B_hit_ram : hit_ram_t;
   -- Output buffer the bram needs.
-  signal hit_ram_o : word144_t;
+  signal A_hit_ram_o : word144_t;
+  signal B_hit_ram_o : word144_t;
   -- The hit ram allocation counter.
-  signal hit_idx : byte_t;
+  signal A_hit_idx : byte_t;
+  signal B_hit_idx : byte_t;
   -- Did we hit?
-  signal hit : std_logic;
+  signal A_hit : std_logic;
+  signal B_hit : std_logic;
 
   -- The 48 bit global cycle counter.
   signal global_count : word48_t;
   signal global_count_latch : word48_t;
   signal global_count_match : std_logic; -- Does global count match command?
-  signal load_match : std_logic; -- Buffered load command hit.
-  signal sample_match0 : std_logic; -- Sample command hit.
-  signal sample_match : std_logic; -- Buffered sample command hit.
+  signal A_load_match : std_logic; -- Buffered load command hit.
+  signal B_load_match : std_logic; -- Buffered load command hit.
+  signal A_sample_match : std_logic; -- Buffered sample command hit.
+  signal B_sample_match : std_logic; -- Buffered sample command hit.
 
 begin
 
@@ -131,8 +145,10 @@ begin
           command_valid <= '0';
           -- If the previous command read ram then grab the data out of the
           -- hit-ram.  Else grab the latched clock.
-          if command_op_readram = '1' then
-            command <= x"00" & hit_ram_o;
+          if A_op_readram = '1' then
+            command <= x"00" & A_hit_ram_o;
+          elsif B_op_readram = '1' then
+            command <= x"00" & B_hit_ram_o;
           else
             command <= x"00000000000000000000000000" & global_count_latch;
           end if;
@@ -149,10 +165,11 @@ begin
               hit => global_count_match,
               Clk => Clk);
 
-  m : md5 port map (input => md5_next, output => md5_output, Clk => Clk);
+  md5A : md5 port map (input => A_next, output => B_output, Clk => Clk);
+  md5B : md5 port map (input => A_next, output => B_output, Clk => Clk);
 
   -- Nice LEDs
-  LED <= hit_idx;
+  LED <= A_hit_idx + B_hit_idx;
 
   process (Clk)
   begin
@@ -163,13 +180,18 @@ begin
       command_edge(1) <= command_edge(0);
 
       -- Write into the hit ram on hits.
-      if hit = '1' then
-        hit_ram (conv_integer(hit_idx)) <= global_count & md5_next;
-        hit_idx <= hit_idx + 1;
+      if A_hit = '1' then
+        A_hit_ram (conv_integer(A_hit_idx)) <= global_count & A_next;
+        A_hit_idx <= A_hit_idx + 1;
+      end if;
+      if B_hit = '1' then
+        B_hit_ram (conv_integer(A_hit_idx)) <= global_count & B_next;
+        B_hit_idx <= B_hit_idx + 1;
       end if;
 
       -- Read the hit_ram.
-      hit_ram_o <= hit_ram (conv_integer (command (143 downto 136)));
+      A_hit_ram_o <= A_hit_ram (conv_integer (command (143 downto 136)));
+      B_hit_ram_o <= B_hit_ram (conv_integer (command (143 downto 136)));
 
       -- On command_valid rising, latch the global counter.
       if command_edge = "01" then
@@ -178,19 +200,31 @@ begin
 
       -- Buffer the load-match, sample-match and hit.  The write takes place
       -- the cycle after the load mux, so be careful about that.
-      load_match <= command_edge(1) and global_count_match and command_op_load;
-      sample_match <= command_edge(1) and global_count_match and command_op_sample;
-      if md5_output(23 downto 0) = x"000000" or sample_match = '1' then
-        hit <= '1';
+      A_load_match <= command_edge(1) and global_count_match and A_op_load;
+      B_load_match <= command_edge(1) and global_count_match and B_op_load;
+      A_sample_match <= command_edge(1) and global_count_match and A_op_sample;
+      B_sample_match <= command_edge(1) and global_count_match and B_op_sample;
+      if A_output(23 downto 0) = x"000000" or A_sample_match = '1' then
+        A_hit <= '1';
       else
-        hit <= '0';
+        A_hit <= '0';
+      end if;
+      if B_output(23 downto 0) = x"000000" or B_sample_match = '1' then
+        B_hit <= '1';
+      else
+        B_hit <= '0';
       end if;
 
       -- Calculate the next value to feed into the pipeline.
-      if load_match = '1' then
-        md5_next <= command (95 downto 0);
+      if A_load_match = '1' then
+        A_next <= command (95 downto 0);
       else
-        md5_next <= md5_output (95 downto 0);
+        A_next <= A_output (95 downto 0);
+      end if;
+      if B_load_match = '1' then
+        B_next <= command (95 downto 0);
+      else
+        B_next <= A_output (95 downto 0);
       end if;
 
     end if;
