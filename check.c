@@ -34,11 +34,13 @@ void check (int pipeline)
             load_clock, sample_clock, (sample_clock - load_clock) / STAGES);
 
     for (int i = 0; i != 256; ++i) {
+        printf (".");
+        fflush (stdout);
         uint64_t clock;
         uint32_t data[3];
         read_result (pipeline, i, &clock, data);
         if (clock1 <= clock && clock <= clock2)
-            printf ("%12lu %08x %08x %08x [%lu]\n",
+            printf ("\n%12lu %08x %08x %08x [%lu]\n",
                     clock, data[0], data[1], data[2], clock % STAGES);
             got_load = true;
 
@@ -47,6 +49,7 @@ void check (int pipeline)
             memcpy (sample, data, sizeof (data));
         }
     }
+    printf ("\n");
 
     if (!got_load)
         printf_exit ("Failed to load data\n");
