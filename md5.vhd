@@ -13,30 +13,15 @@ library work;
 use work.defs.all;
 
 entity md5 is
-  Port (in0 : in  word_t;
-        in1 : in  word_t;
-        in2 : in  word_t;
-        --hit : out std_logic;            -- Do we have n zeros for some n.
-        Aout : out word_t;
-        Bout : out word_t;
-        Cout : out word_t;
-        Dout : out word_t;
+  Port (input : in word96_t;
+        output : out word128_t;
         --bmon : out dataset_t (0 to 64);
         Clk : in std_logic);
 end md5;
 
 
 architecture Behavioral of md5 is
-  --subtype word_t is std_logic_vector (31 downto 0);
-
-  --type dataset_t is array (natural range <>) of word_t;
-
   type iarray is array (natural range <>) of integer;
-
-  constant S1 : iarray (0 to 3) := (7, 12, 17, 22);
-  constant S2 : iarray (0 to 3) := (5, 9, 14, 20);
-  constant S3 : iarray (0 to 3) := (4, 11, 16, 23);
-  constant S4 : iarray (0 to 3) := (6, 10, 15, 21);
 
   constant S : iarray (0 to 63) := (
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
@@ -66,13 +51,24 @@ architecture Behavioral of md5 is
     variable alpha : std_logic := n(3) and (n(2) or n(1));
     variable result : byte_t;
   begin
-    result (7) := '0';
-    result (6) := alpha;
-    result (5) := not alpha;
-    result (4) := not alpha;
-    result (3) := n(3) and not n(2) and not n(1);
-    result (2 downto 0) := n(2 downto 0) - alpha;
-    return result;
+    case n is
+      when x"1"=> return x"31";
+      when x"2"=> return x"32";
+      when x"3"=> return x"33";
+      when x"4"=> return x"34";
+      when x"5"=> return x"35";
+      when x"6"=> return x"36";
+      when x"7"=> return x"37";
+      when x"8"=> return x"38";
+      when x"9"=> return x"39";
+      when x"a"=> return x"61";
+      when x"b"=> return x"62";
+      when x"c"=> return x"63";
+      when x"d"=> return x"64";
+      when x"e"=> return x"65";
+      when x"f"=> return x"66";
+      when others => return x"30";
+    end case;
   end hexify;
 
   function hexify16 (n : std_logic_vector (15 downto 0)) return word_t is
@@ -86,7 +82,6 @@ architecture Behavioral of md5 is
   end hexify16;
 
   function rotl (x : word_t; n : integer) return word_t is
---    variable result : word_t;
   begin
     if n = 0 then
       return x;
@@ -228,14 +223,6 @@ architecture Behavioral of md5 is
           Sum : out word_t; Clk : std_logic);
   end component;
 
-  -- We really do want to buffer these; XST is too smart for it's
-  -- own good.
-  --attribute keep : string;
-  --attribute keep of Aout : signal is "true";
-  --attribute keep of Bout : signal is "true";
-  --attribute keep of Cout : signal is "true";
-  --attribute keep of Dout : signal is "true";
-  --signal tempi : dataset_t (0 to 19);
 begin
 
   A(0) <= iA;
@@ -249,10 +236,10 @@ begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      Aout <= A(64) + iA;
-      Bout <= B(64) + iB;
-      Cout <= C(64) + iC;
-      Dout <= D(64) + iD;
+      output ( 31 downto  0) <= A(64) + iA;
+      output ( 63 downto 32) <= B(64) + iB;
+      output ( 95 downto 64) <= C(64) + iC;
+      output (127 downto 96) <= D(64) + iD;
     end if;
   end process;
 
@@ -269,11 +256,11 @@ begin
   end generate;
 
   -- Load x0 through x5 with the hexified inputs.
-  xx(0) <= hexify16 (in0 (15 downto  0));
-  xx(1) <= hexify16 (in0 (31 downto 16));
-  xx(2) <= hexify16 (in1 (15 downto  0));
-  xx(3) <= hexify16 (in1 (31 downto 16));
-  xx(4)(7 downto 0) <= hexify (in2 (3 downto  0));
+  xx(0) <= hexify16 (input (15 downto  0));
+  xx(1) <= hexify16 (input (31 downto 16));
+  xx(2) <= hexify16 (input (47 downto 32));
+  xx(3) <= hexify16 (input (63 downto 48));
+  xx(4)(7 downto 0) <= hexify (input (67 downto 64));
   xx(4)(15 downto 8) <= x"80";
   xx(4)(31 downto 16) <= x"0000";
   xx(5) <= x"00000000";
@@ -352,13 +339,6 @@ begin
       B(0) <= iB;
       C(0) <= iC;
       D(0) <= iD;
-
-      -- We flag outputs with 24 zeros.
---      if A(64)(23 downto 0) = iAneg(23 downto 0) then
---        hit <= '1';
---    else
---      hit <= '0';
---    end if;
 
       -- Propagations.
       Ba <= B(0 to 63);

@@ -10,6 +10,8 @@ package defs is
   subtype word_t is std_logic_vector (31 downto 0);
 
   subtype word48_t is std_logic_vector (47 downto 0);
+  subtype word96_t is std_logic_vector (95 downto 0);
+  subtype word128_t is std_logic_vector (127 downto 0);
 
   type dataset_t is array (natural range <>) of word_t;
 

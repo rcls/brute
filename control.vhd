@@ -55,17 +55,8 @@ architecture Behavioral of control is
   subtype word144_t is std_logic_vector (143 downto 0);
 
   component md5 is
-    port (in0 : in word_t;
-          in1 : in word_t;
-          in2 : in word_t;
-
-          --hit : out std_logic;
-
-          Aout : out word_t;
-          Bout : out word_t;
-          Cout : out word_t;
-          Dout : out word_t;
-
+    port (input : in word96_t;
+          output : out word128_t;
           Clk : in std_logic);
   end component;
 
@@ -78,24 +69,18 @@ architecture Behavioral of control is
 
   signal Clk : std_logic;
 
-  signal next0 : word_t;                -- 3 input words to md5.
-  signal next1 : word_t;
-  signal next2 : word_t;
+  signal md5_next : word96_t;           -- 3 input words to md5.
+  signal md5_output : word128_t;        -- 4 output words from md5.
 
-  signal outA : word_t;                 -- 4 output words from md5.
-  signal outB : word_t;
-  signal outC : word_t;
-  signal outD : word_t;
-
-  -- 152 bit shift register attached to user1.  8 bit opcode plus 144 bits
-  -- data.
+  -- 152 bit shift register attached to user1.
+  -- 8 bit opcode / 48 bit clock / 96 bits data  or
+  -- 8 bit opcode / 8 bit address.
+  -- Opcode is bitmask:
   -- bit 0 : read result + 8 bit address
   -- bit 1 : load md5 - 48 bit clock count + 96 bits data.
   -- bit 2 : sample md5 - 48 bit clock count
   signal command : std_logic_vector (151 downto 0);
-  alias command_opcode : byte_t is command (151 downto 144);
-  alias command_clock : word48_t is command (143 downto 96);
-  alias command_address : byte_t is command (143 downto 136);
+
   signal command_valid : std_logic := '0';
 
   alias command_op_readram : std_logic is command (144);
@@ -121,7 +106,7 @@ architecture Behavioral of control is
   signal global_count_latch : word48_t;
   signal global_count_match : std_logic; -- Does global count match command?
   signal load_match : std_logic; -- Buffered load command hit.
-  signal sample_match0 : std_logic; -- Buffered sample command hit.
+  signal sample_match0 : std_logic; -- Sample command hit.
   signal sample_match : std_logic; -- Buffered sample command hit.
 
 begin
@@ -176,22 +161,11 @@ begin
 
   global_cnt : counter
     port map (count => global_count,
-              match => command_clock,
+              match => command (143 downto 96),
               hit => global_count_match,
               Clk => Clk);
 
-  m : md5 port map (in0 => next0,
-                    in1 => next1,
-                    in2 => next2,
-
-                    --hit => hit,
-
-                    Aout => outA,
-                    Bout => outB,
-                    Cout => outC,
-                    Dout => outD,
-
-                    Clk => Clk);
+  m : md5 port map (input => md5_next, output => md5_output, Clk => Clk);
 
   -- Nice LEDs
   LED <= hit_idx;
@@ -199,7 +173,8 @@ begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      -- Run the command_valid edge.
+      -- Run the command_valid edge.  This serves both edge detection and
+      -- as a guard against metastability.
       command_edge(0) <= command_valid;
       command_edge(1) <= command_edge(0);
 
@@ -210,7 +185,7 @@ begin
       end if;
 
       -- Read the hit_ram.
-      hit_ram_o <= hit_ram (conv_integer (command_address));
+      hit_ram_o <= hit_ram (conv_integer (command (143 downto 136)));
 
       -- On command_valid rising, latch the global counter.
       if command_edge = "01" then
@@ -229,13 +204,9 @@ begin
 
       -- Calculate the next value to feed into the pipeline.
       if load_match = '1' then
-        next0 <= command (31 downto 0);
-        next1 <= command (63 downto 32);
-        next2 <= command (95 downto 64);
+        md5_next <= command (95 downto 0);
       else
-        next0 <= outA;
-        next1 <= outB;
-        next2 <= outC;
+        md5_next <= md5_output;
       end if;
 
     end if;
