@@ -15,7 +15,7 @@ int main()
 
     uint64_t clock1 = read_clock();
     uint64_t load_clock = clock1 + FREQ / 20;
-    load_md5 (clock1 + FREQ / 20, 0x01234567, 0x78abcdef, 0xfc9639da);
+    load_md5 (load_clock, 0x01234567, 0x78abcdef, 0xfc9639da);
     usleep (100000);
 
     uint64_t sample_clock = load_clock + (FREQ / 10 / STAGES) * STAGES;

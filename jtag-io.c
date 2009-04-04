@@ -319,6 +319,8 @@ void transform (const uint32_t din[3], uint32_t dout[3])
 
     const unsigned int LAST = NIBBLES - 1;
     for (unsigned i = 0; i != LAST; ++i)
+        string[i] = "0123456789abcdef"[
+            (din[i / 8] >> ((i % 8) * 4)) & 15];
     string[LAST] = "0123456789abcdef"[
         (din[LAST / 8] >> ((LAST % 8) * 4)) & LAST_NIBBLE_MASK];
 
