@@ -11,6 +11,20 @@
 #include "jtag-io.h"
 
 
+// The bytes we send to USER1 as opcodes.
+enum {
+    opA_read_result = 1,        // 8 opcode, 8 clock, returns 48 clock, 96 data.
+    opA_load_md5 = 6,           // 8 opcode, 48 clock, 96 data.
+    opA_sample_md5 = 4,         // 8 opcode, 48 clock.
+
+    opB_read_result = 1 << 4,   // 8 opcode, 8 clock, returns 48 clock, 96 data.
+    opB_load_md5 = 6 << 4,      // 8 opcode, 48 clock, 96 data.
+    opB_sample_md5 = 4 << 4,    // 8 opcode, 48 clock.
+
+    op_read_clock = 0,                  // 8 clock, returns 48 data.
+};
+
+
 // JTAG port bits.
 enum {
     MASK_TDI = 1,
@@ -145,7 +159,8 @@ static void write_read (unsigned char * buf,
 }
 
 
-void load_md5 (uint64_t clock, uint32_t load0, uint32_t load1, uint32_t load2)
+void load_md5 (int pipeline,
+               uint64_t clock, uint32_t load0, uint32_t load1, uint32_t load2)
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -163,7 +178,8 @@ void load_md5 (uint64_t clock, uint32_t load0, uint32_t load1, uint32_t load2)
     // The clock.
     p = append_nq (p, clock - MATCH_DELAY, 48, false);
 
-    p = append_nq (p, op_load_md5, 8, true); // ends in exit1-dr.
+    p = append_nq (p, pipeline == 0 ? opA_load_md5 : opB_load_md5,
+                   8, true); // ends in exit1-dr.
     p = append_tms (p, 1);                   // update-ir.
     p = append_tms (p, 0);                   // runtest-idle.
 
@@ -171,7 +187,7 @@ void load_md5 (uint64_t clock, uint32_t load0, uint32_t load1, uint32_t load2)
 }
 
 
-void sample_md5 (uint64_t clock)
+void sample_md5 (int pipeline, uint64_t clock)
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -185,7 +201,8 @@ void sample_md5 (uint64_t clock)
     // The clock.
     p = append_nq (p, clock - MATCH_DELAY, 48, false);
 
-    p = append_nq (p, op_sample_md5, 8, true); // ends in exit1-dr.
+    p = append_nq (p, pipeline == 0 ? opA_sample_md5 : opB_sample_md5,
+                   8, true); // ends in exit1-dr.
     p = append_tms (p, 1);                   // update-ir.
     p = append_tms (p, 0);                   // runtest-idle.
 
@@ -193,7 +210,8 @@ void sample_md5 (uint64_t clock)
 }
 
 
-void read_result (int location, uint64_t * clock, uint32_t data[3])
+void read_result (int pipeline,
+                  int location, uint64_t * clock, uint32_t data[3])
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -205,7 +223,8 @@ void read_result (int location, uint64_t * clock, uint32_t data[3])
     p = append_tms (p, 0);              // shift-dr.
 
     p = append_nq (p, location, 8, false); // location.
-    p = append_nq (p, op_read_result, 8, true); // ends in exit1-dr.
+    p = append_nq (p, pipeline == 0 ? opA_read_result : opB_read_result,
+                   8, true); // ends in exit1-dr.
     p = append_tms (p, 1);                   // update-ir.
     p = append_tms (p, 0);                   // runtest-idle.
 

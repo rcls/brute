@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "jtag-io.h"
@@ -85,7 +86,7 @@ static void finish (result_t * MA, result_t * MB)
 }
 
 
-static result_t * channel_last[STAGES];
+static result_t * channel_last[STAGES * PIPELINES];
 static int channels_seeded;
 
 
@@ -96,8 +97,8 @@ static void add_result (result_t * result)
     int channel = result->clock % STAGES;
 
     if (channel_last[channel] == NULL) {
-        if ((result->data[0] & 0xffffff) == 0)
-            return;
+        if ((result->data[0] & 0xfffffff) == 0)
+            return;        // Ignore pre-seed data.
         ++channels_seeded;
     }
 
@@ -127,20 +128,25 @@ static void add_result (result_t * result)
 
 static void seed (void)
 {
-    for (int i = 0; i != STAGES; ++i) {
+    int done = 0;
+    for (int i = 0; i != STAGES * PIPELINES && done < 10; ++i) {
         if (channel_last[i] != NULL)
             continue;
 
         printf (".");
         fflush (stdout);
         uint64_t clock = read_clock();
+        int pipe = i % PIPELINES;
+        int stage = i / PIPELINES;
 
         clock += FREQ / 50;
         clock -= clock % STAGES;
-        clock += i;
+        clock += stage;
         // The clock comparison is registered, giving a one-cycle delay.
-        load_md5 (clock - 1, i + 256, i + 256, i + 256);
-        usleep (20003);
+        load_md5 (pipe, clock, i + 256, i + 256, i + 256);
+        usleep (20000);
+
+        ++done;
     }
     printf ("\n");
 }
@@ -155,21 +161,32 @@ int main()
 
     printf ("ID Code is %08x\n", read_id());
 
-    int index = 0;
-    uint64_t clock = 0;
+    int index[PIPELINES];
+    uint64_t clock[PIPELINES];
+
+    memset (index, 0, sizeof (index));
+    memset (clock, 0, sizeof (clock));
 
     while (true) {
-        result_t result;
-        result.ram_slot = index & 255;
-        read_result (index & 255, &result.clock, result.data);
-        if (result.clock > clock) {
-            add_result (&result);
-            clock = result.clock;
-            ++index;
-        }
-        else if (channels_seeded < STAGES) {
+        bool got = false;
+        for (int pipe = 0; pipe != PIPELINES; ++pipe)
+            while (true) {
+                result_t result;
+                read_result (pipe, index[pipe] & 255,
+                             &result.clock, result.data);
+                if (result.clock <= clock[pipe])
+                    break;
+
+                got = true;
+                result.ram_slot = (index[pipe] & 255) * PIPELINES + pipe;
+                clock[pipe] = result.clock;
+                add_result (&result);
+                ++index[pipe];
+            }
+        if (got)
+            continue;
+        if (channels_seeded < STAGES * PIPELINES)
             seed();
-        }
         else
             sleep (1);
     }

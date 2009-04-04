@@ -1,25 +1,24 @@
 
-#include <openssl/md5.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "jtag-io.h"
 
-int main()
+void check (int pipeline)
 {
-    open_serial();
-
+    printf ("Check pipeline %c\n", pipeline ? 'A' : 'B');
     printf ("ID Code is %08x\n", read_id());
 
     uint64_t clock1 = read_clock();
     uint64_t load_clock = clock1 + FREQ / 20;
-    load_md5 (load_clock, 0x01234567, 0x78abcdef, 0xfc9639da);
+    load_md5 (pipeline, load_clock, 0x01234567, 0x78abcdef, 0xfc9639da);
     usleep (100000);
 
     uint64_t sample_clock = load_clock + (FREQ / 10 / STAGES) * STAGES;
-    sample_md5 (sample_clock);
+    sample_md5 (pipeline, sample_clock);
     usleep (100000);
 
     uint32_t sample[3];
@@ -37,11 +36,10 @@ int main()
     for (int i = 0; i != 256; ++i) {
         uint64_t clock;
         uint32_t data[3];
-        read_result (i, &clock, data);
-        printf ("%12lu %08x %08x %08x [%lu]%s\n",
-                clock, data[0], data[1], data[2], clock % STAGES,
-                (clock1 <= clock && clock <= clock2) ? " *" : "");
-        if (clock == load_clock)
+        read_result (pipeline, i, &clock, data);
+        if (clock1 <= clock && clock <= clock2)
+            printf ("%12lu %08x %08x %08x [%lu]\n",
+                    clock, data[0], data[1], data[2], clock % STAGES);
             got_load = true;
 
         if (clock == sample_clock) {
@@ -64,8 +62,17 @@ int main()
 
     if (memcmp (data, sample, sizeof (data)) != 0)
         printf_exit ("Mismatch\n");
+}
+
+
+int main()
+{
+    open_serial();
+
+    check (0);
+    check (1);
 
     jtag_reset();
 
-    return 0;
+    return EXIT_SUCCESS;
 }
