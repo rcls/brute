@@ -345,7 +345,7 @@ void transform (const uint32_t din[3], uint32_t dout[3])
 
     MD5_CTX c;
     MD5_Init (&c);
-    MD5_Update (&c, string, 17);
+    MD5_Update (&c, string, NIBBLES);
     unsigned char md[16];
     MD5_Final (md, &c);
     // Convert little endian back to 32-bit words.
