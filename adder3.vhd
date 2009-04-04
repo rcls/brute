@@ -70,7 +70,7 @@ begin
       CEP=> '1',
       CLK=> Clk,
       D=> "00" & x"0000",
-      OPMODE=> "00011111", -- add/add / carry0/no-pre-add / C port/DBA
+      OPMODE=> "00001111", -- add/add / carry0/no-pre-add / C port/DBA
       PCIN=> x"000000000000",
       RSTA=> '0',
       RSTB=> '0',
@@ -115,7 +115,7 @@ begin
       CEP=> '1',
       CLK=> Clk,
       D=> "00" & x"0000",
-      OPMODE=> "00011111", -- add/add / carry0/no-pre-add / C port / DBA
+      OPMODE=> "00001111", -- add/add / carry0/no-pre-add / C port / DBA
       PCIN=> x"000000000000",
       RSTA=> '0',
       RSTB=> '0',
