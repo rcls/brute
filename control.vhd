@@ -18,22 +18,6 @@ end control;
 
 architecture Behavioral of control is
 
-  component BSCAN_SPARTAN3A
-    port (TCK : out STD_ULOGIC;
-          TMS : out STD_ULOGIC;
-          CAPTURE : out STD_ULOGIC;
-          DRCK1 : out STD_ULOGIC;
-          DRCK2 : out STD_ULOGIC;
-          RESET : out STD_ULOGIC;
-          SEL1 : out STD_ULOGIC;
-          SEL2 : out STD_ULOGIC;
-          SHIFT : out STD_ULOGIC;
-          TDI : out STD_ULOGIC;
-          UPDATE : out STD_ULOGIC;
-          TDO1 : in STD_ULOGIC;
-          TDO2 : in STD_ULOGIC);
-  end component;
-
   component Clock
     port (CLKIN_IN : in STD_LOGIC; CLKFX_OUT : out STD_LOGIC);
   end component;
@@ -180,7 +164,7 @@ begin
 
       -- Write into the hit ram on hits.
       if hit = '1' then
-        hit_ram (conv_integer(hit_idx)) <= global_count & next2 & next1 & next0;
+        hit_ram (conv_integer(hit_idx)) <= global_count & md5_next;
         hit_idx <= hit_idx + 1;
       end if;
 
@@ -196,7 +180,7 @@ begin
       -- the cycle after the load mux, so be careful about that.
       load_match <= command_edge(1) and global_count_match and command_op_load;
       sample_match <= command_edge(1) and global_count_match and command_op_sample;
-      if outA(23 downto 0) = x"000000" or sample_match = '1' then
+      if md5_output(23 downto 0) = x"000000" or sample_match = '1' then
         hit <= '1';
       else
         hit <= '0';
@@ -206,7 +190,7 @@ begin
       if load_match = '1' then
         md5_next <= command (95 downto 0);
       else
-        md5_next <= md5_output;
+        md5_next <= md5_output (95 downto 0);
       end if;
 
     end if;
