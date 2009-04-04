@@ -9,7 +9,7 @@
 #define FREQ (150 * 1000 * 1000)
 #define MATCH_DELAY 3
 
-#define NIBBLES 17
+#define NIBBLES 18
 #define LAST_NIBBLE_MASK 15
 
 // The two jtag commands
