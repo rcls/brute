@@ -1,5 +1,6 @@
 
 #include <fcntl.h>
+#include <openssl/md5.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -309,4 +310,25 @@ void open_serial (void)
         perror_exit ("tcflush failed");
 
     jtag_reset();
+}
+
+
+void transform (const uint32_t din[3], uint32_t dout[3])
+{
+    unsigned char string[NIBBLES];
+
+    const unsigned int LAST = NIBBLES - 1;
+    for (unsigned i = 0; i != LAST; ++i)
+    string[LAST] = "0123456789abcdef"[
+        (din[LAST / 8] >> ((LAST % 8) * 4)) & LAST_NIBBLE_MASK];
+
+    MD5_CTX c;
+    MD5_Init (&c);
+    MD5_Update (&c, string, 17);
+    unsigned char md[16];
+    MD5_Final (md, &c);
+    // Convert little endian back to 32-bit words.
+    dout[0] = md[0] + md[1] * 256 + md[2] * 65536 + md[3] * 16777216;
+    dout[1] = md[4] + md[5] * 256 + md[6] * 65536 + md[7] * 16777216;
+    dout[2] = md[8] + md[9] * 256 + md[10] * 65536 + md[11] * 16777216;
 }

@@ -17,30 +17,7 @@ typedef struct result_t {
 } result_t;
 
 
-void transform (const uint32_t din[3], uint32_t dout[3])
-{
-    unsigned char string[24];
-    
-    for (int i = 0; i != 24; ++i) {
-        uint32_t w = din[i / 8];
-        w >>= (i % 8) * 4;
-        w &= 0xf;
-        string[i] = "0123456789ABCDEF"[w];
-    }
-
-    MD5_CTX c;
-    MD5_Init (&c);
-    MD5_Update (&c, string, 17);
-    unsigned char md[16];
-    MD5_Final (md, &c);
-    // Convert little endian back to 32-bit words.
-    dout[0] = md[0] + md[1] * 256 + md[2] * 65536 + md[3] * 16777216;
-    dout[1] = md[4] + md[5] * 256 + md[6] * 65536 + md[7] * 16777216;
-    dout[2] = md[8] + md[9] * 256 + md[10] * 65536 + md[11] * 16777216;
-}
-
-
-bool match (const uint32_t A[3], const uint32_t B[3])
+static bool match (const uint32_t A[3], const uint32_t B[3])
 {
     return A[0] == B[0] && A[1] == B[1] && (A[2] & 15) == (B[2] & 15);
 }

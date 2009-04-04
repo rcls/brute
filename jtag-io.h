@@ -8,6 +8,8 @@
 #define FREQ (150 * 1000 * 1000)
 #define MATCH_DELAY 2
 
+#define NIBBLES 17
+#define LAST_NIBBLE_MASK 15
 
 // The two jtag commands
 enum {
@@ -34,5 +36,8 @@ uint64_t read_clock (void);
 uint32_t read_id (void);
 void jtag_reset (void);
 void open_serial (void);
+
+// Nothing to do with jtag...
+void transform (const uint32_t din[3], uint32_t dout[3]);
 
 #endif
