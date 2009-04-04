@@ -13,7 +13,7 @@ use work.defs.all;
 
 entity control is
   port (Clk_125MHz : in std_logic;
-      LED : out byte_t);
+        LED : out byte_t);
 end control;
 
 architecture Behavioral of control is
@@ -35,12 +35,15 @@ architecture Behavioral of control is
   signal jtag_tdo1 : std_logic;
   signal jtag_tdo2 : std_logic;
 
-  -- We use a 48 bit cycle counter.
-  subtype word144_t is std_logic_vector (143 downto 0);
-
-  component md5 is
-    port (input : in word96_t;
-          output : out word128_t;
+  component feeder is
+    port (hit_read_addr : in byte_t;
+          hit_ram_o : out word144_t;
+          hit_idx : out byte_t;
+          global_count : in word48_t;
+          global_count_match : in std_logic;
+          load_data : in word96_t;
+          load_match : in std_logic;
+          sample_match : in std_logic;
           Clk : in std_logic);
   end component;
 
@@ -69,6 +72,8 @@ architecture Behavioral of control is
   -- bit 5 : load md5 - 48 bit clock count + 96 bits data. (pipeline B)
   -- bit 6 : sample md5 - 48 bit clock count (pipeline B)
   signal command : std_logic_vector (151 downto 0);
+  alias command_address : byte_t is command (143 downto 136);
+  alias command_data : word96_t is command (95 downto 0);
 
   signal command_valid : std_logic := '0';
 
@@ -84,29 +89,20 @@ architecture Behavioral of control is
   -- clock domains.
   signal command_edge : std_logic_vector (1 downto 0) := "00";
 
-  -- The dual ported hit ram.
-  type hit_ram_t is array (255 downto 0) of word144_t;
-  signal A_hit_ram : hit_ram_t;
-  signal B_hit_ram : hit_ram_t;
-  -- Output buffer the bram needs.
-  signal A_hit_ram_o : word144_t;
-  signal B_hit_ram_o : word144_t;
-  -- The hit ram allocation counter.
-  signal A_hit_idx : byte_t;
-  signal B_hit_idx : byte_t;
-  -- Did we hit?
-  signal A_hit : std_logic;
-  signal B_hit : std_logic;
-
   -- The 48 bit global cycle counter.
   signal global_count : word48_t;
   signal global_count_latch : word48_t;
   signal global_count_match : std_logic; -- Does global count match command?
+
   signal A_load_match : std_logic; -- Buffered load command hit.
   signal B_load_match : std_logic; -- Buffered load command hit.
   signal A_sample_match : std_logic; -- Buffered sample command hit.
   signal B_sample_match : std_logic; -- Buffered sample command hit.
-
+  signal A_hitram_o : word144_t;
+  signal B_hitram_o : word144_t;
+  signal A_hit_idx : byte_t;
+  signal B_hit_idx : byte_t;
+  
 begin
 
   BSCAN_SPARTAN3_inst : BSCAN_SPARTAN3A
@@ -146,9 +142,9 @@ begin
           -- If the previous command read ram then grab the data out of the
           -- hit-ram.  Else grab the latched clock.
           if A_op_readram = '1' then
-            command <= x"00" & A_hit_ram_o;
+            command <= x"00" & A_hitram_o;
           elsif B_op_readram = '1' then
-            command <= x"00" & B_hit_ram_o;
+            command <= x"00" & B_hitram_o;
           else
             command <= x"00000000000000000000000000" & global_count_latch;
           end if;
@@ -165,8 +161,27 @@ begin
               hit => global_count_match,
               Clk => Clk);
 
-  md5A : md5 port map (input => A_next, output => B_output, Clk => Clk);
-  md5B : md5 port map (input => A_next, output => B_output, Clk => Clk);
+  feedA : feeder
+    port map (hit_read_addr => command_address,
+              hit_ram_o     => A_hitram_o,
+              hit_idx       => A_hit_idx,
+              global_count_match => global_count_match,
+              global_count  => global_count,
+              load_data     => command_data,
+              load_match    => A_load_match,
+              sample_match  => A_sample_match,
+              Clk           => Clk);
+
+  feedB : feeder
+    port map (hit_read_addr => command_address,
+              hit_ram_o     => B_hitram_o,
+              hit_idx       => B_hit_idx,
+              global_count_match => global_count_match,
+              global_count  => global_count,
+              load_data     => command_data,
+              load_match    => B_load_match,
+              sample_match  => B_sample_match,
+              Clk           => Clk);
 
   -- Nice LEDs
   LED <= A_hit_idx + B_hit_idx;
@@ -179,20 +194,6 @@ begin
       command_edge(0) <= command_valid;
       command_edge(1) <= command_edge(0);
 
-      -- Write into the hit ram on hits.
-      if A_hit = '1' then
-        A_hit_ram (conv_integer(A_hit_idx)) <= global_count & A_next;
-        A_hit_idx <= A_hit_idx + 1;
-      end if;
-      if B_hit = '1' then
-        B_hit_ram (conv_integer(A_hit_idx)) <= global_count & B_next;
-        B_hit_idx <= B_hit_idx + 1;
-      end if;
-
-      -- Read the hit_ram.
-      A_hit_ram_o <= A_hit_ram (conv_integer (command (143 downto 136)));
-      B_hit_ram_o <= B_hit_ram (conv_integer (command (143 downto 136)));
-
       -- On command_valid rising, latch the global counter.
       if command_edge = "01" then
         global_count_latch <= global_count;
@@ -204,29 +205,6 @@ begin
       B_load_match <= command_edge(1) and global_count_match and B_op_load;
       A_sample_match <= command_edge(1) and global_count_match and A_op_sample;
       B_sample_match <= command_edge(1) and global_count_match and B_op_sample;
-      if A_output(23 downto 0) = x"000000" or A_sample_match = '1' then
-        A_hit <= '1';
-      else
-        A_hit <= '0';
-      end if;
-      if B_output(23 downto 0) = x"000000" or B_sample_match = '1' then
-        B_hit <= '1';
-      else
-        B_hit <= '0';
-      end if;
-
-      -- Calculate the next value to feed into the pipeline.
-      if A_load_match = '1' then
-        A_next <= command (95 downto 0);
-      else
-        A_next <= A_output (95 downto 0);
-      end if;
-      if B_load_match = '1' then
-        B_next <= command (95 downto 0);
-      else
-        B_next <= A_output (95 downto 0);
-      end if;
-
     end if;
   end process;
 
