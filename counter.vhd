@@ -59,7 +59,7 @@ begin
       CEP=> '1',
       CLK=> Clk,
       D=> "00" & x"0000",
-      OPMODE=> "00111000", -- add,add / carry1,no-preadd / pcin,zero
+      OPMODE=> "00101000", -- add,add / carry1,no-preadd / pcin,zero
       PCIN=> x"000000000000",
       RSTA=> '0',
       RSTB=> '0',
@@ -108,7 +108,7 @@ begin
       CEP=> '1',
       CLK=> Clk,
       D=> match54 (53 downto 36),
-      OPMODE=> "10010111", -- sub,sub / carry0,no-preadd / pcin,dab
+      OPMODE=> "10000111", -- sub,sub / carry0,no-preadd / pcin,dab
       PCIN=> count_int,
       RSTA=> '0',
       RSTB=> '0',

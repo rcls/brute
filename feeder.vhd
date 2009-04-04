@@ -52,7 +52,7 @@ begin
 
       hit_ram_o <= hit_ram (conv_integer (hit_read_addr));
 
-      if md5_out(23 downto 0) = x"000000" or sample_match = '1' then
+      if md5_out(27 downto 0) = x"0000000" or sample_match = '1' then
         hit <= '1';
       else
         hit <= '0';

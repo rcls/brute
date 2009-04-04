@@ -15,7 +15,7 @@ use work.defs.all;
 entity md5 is
   Port (input : in word96_t;
         output : out word128_t;
-        --bmon : out dataset_t (0 to 64);
+        bmon : out dataset_t (0 to 64);
         Clk : in std_logic);
 end md5;
 
@@ -179,8 +179,6 @@ architecture Behavioral of md5 is
   signal C : dataset_t (0 to 64);
   signal D : dataset_t (0 to 64);
 
-  --signal Aa : dataset_t (0 to 63);
-  --signal Ab : dataset_t (0 to 63);
   signal Ba : dataset_t (0 to 63);
   signal Bb : dataset_t (0 to 63);
   signal Ca : dataset_t (0 to 63);
@@ -211,6 +209,13 @@ architecture Behavioral of md5 is
 
   constant iAneg : word_t := x"00000000" - iA;
 
+  constant mask1 : dataset_t (0 to 5) := (
+    x"20202020", x"20202020", x"20202020",
+	 x"20202020", x"00802020", x"00000000");
+  constant mask0 : dataset_t (0 to 5) := (
+    x"7f7f7f7f", x"7f7f7f7f", x"7f7f7f7f",
+	 x"7f7f7f7f", x"00807f7f", x"00000000");
+
   component delay is
     generic (N : integer);
     port (clk: in std_logic; D: in word_t; Q: out word_t);
@@ -230,7 +235,7 @@ begin
   C(0) <= iC;
   D(0) <= iD;
 
-  --bmon(0 to 5) <= Fx;
+  bmon <= B;
 
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)
@@ -261,27 +266,22 @@ begin
   xx(2) <= hexify16 (input (47 downto 32));
   xx(3) <= hexify16 (input (63 downto 48));
   xx(4)(7 downto 0) <= hexify (input (67 downto 64));
-  xx(4)(15 downto 8) <= x"80";
-  xx(4)(31 downto 16) <= x"0000";
+  xx(4)(15 downto 8) <= hexify (input (71 downto 68));
+  xx(4)(31 downto 16) <= x"0080";
   xx(5) <= x"00000000";
 
-  input_mask: for i in 0 to 3 generate
-    yy(i)      <= Fx(i) and x"7f7f7f7f";
-    yy(i + 16) <= Gx(i) and x"7f7f7f7f";
-    yy(i + 32) <= Hx(i) and x"7f7f7f7f";
-    yy(i + 48) <= Ix(i) and x"7f7f7f7f";
+  input_mask: for i in 0 to 5 generate
+    yy(i)      <= (mask1(i) or Fx(i)) and mask0(i);
+    yy(i + 16) <= (mask1(i) or Gx(i)) and mask0(i);
+    yy(i + 32) <= (mask1(i) or Hx(i)) and mask0(i);
+    yy(i + 48) <= (mask1(i) or Ix(i)) and mask0(i);
   end generate;
 
-  yy( 4) <= (x"00008000" or Fx(4)) and x"000080ff";
-  yy(20) <= (x"00008000" or Gx(4)) and x"000080ff";
-  yy(36) <= (x"00008000" or Hx(4)) and x"000080ff";
-  yy(52) <= (x"00008000" or Ix(4)) and x"000080ff";
-
   input_constants: for i in 0 to 3 generate
-    input_zeros: for j in 5 to 13 generate
+    input_zeros: for j in 6 to 13 generate
       yy(i * 16 + j) <= x"00000000";
     end generate;
-    yy(i * 16 + 14) <= x"00000088";
+    yy(i * 16 + 14) <= x"00000090";
     yy(i * 16 + 15) <= x"00000000";
   end generate;
 
