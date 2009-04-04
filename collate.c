@@ -104,7 +104,7 @@ static void add_result (result_t * result)
     result_t * r = malloc (sizeof (result_t));
     *r = *result;
     r->hash_next = NULL;
-    
+
     r->channel_prev = channel_last[channel];
     channel_last[channel] = r;
 

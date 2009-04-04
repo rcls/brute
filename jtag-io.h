@@ -6,7 +6,7 @@
 
 #define STAGES 195
 #define FREQ (150 * 1000 * 1000)
-#define MATCH_DELAY 2
+#define MATCH_DELAY 3
 
 #define NIBBLES 17
 #define LAST_NIBBLE_MASK 15
