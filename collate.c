@@ -18,9 +18,17 @@ typedef struct result_t {
 } result_t;
 
 
+const uint32_t mask0 = BITS >= 32 ? 0xfffffff : (1 << BITS) - 1;
+const uint32_t mask1 = BITS >= 32
+    ? BITS >= 64 ? 0xfffffff : (1 << (BITS - 32)) - 1
+    : 0;
+const uint32_t mask2 = BITS >= 64 ? (1 << (BITS - 64)) - 1 : 0;
+
 static bool match (const uint32_t A[3], const uint32_t B[3])
 {
-    return A[0] == B[0] && A[1] == B[1] && (A[2] & 15) == (B[2] & 15);
+    return (A[0] & mask0) == (B[0] & mask0)
+        && (A[1] & mask1) == (B[1] & mask1)
+        && (A[2] & mask2) == (B[2] & mask2);
 }
 
 
@@ -29,12 +37,10 @@ static void finish (result_t * MA, result_t * MB)
     printf ("HIT!!!!\n");
     printf ("%12lu %08x %08x %08x %c[%3lu]\n",
             MA->clock, MA->data[0], MA->data[1], MA->data[2],
-            'A' + MA->ram_slot % PIPELINES,
-            MA->clock % STAGES);
+            'A' + MA->ram_slot % PIPELINES, MA->clock % STAGES);
     printf ("%12lu %08x %08x %08x %c[%3lu]\n",
             MB->clock, MB->data[0], MB->data[1], MB->data[2],
-            'A' + MB->ram_slot % PIPELINES,
-            MB->clock % STAGES);
+            'A' + MB->ram_slot % PIPELINES, MB->clock % STAGES);
 
     result_t CA = *(MA->channel_prev);
     result_t CB = *(MB->channel_prev);
@@ -100,7 +106,7 @@ static void add_result (result_t * result)
     channel = channel * PIPELINES + result->ram_slot % PIPELINES;
 
     if (channel_last[channel] == NULL) {
-        if ((result->data[0] & 0xfffffff) == 0)
+        if ((result->data[0] & TRIGGER_MASK) == 0)
             return;        // Ignore pre-seed data.
         ++channels_seeded;
     }
@@ -113,8 +119,8 @@ static void add_result (result_t * result)
     channel_last[channel] = r;
 
     printf ("%12lu %08x %08x %08x %c[%3u]%s\n",
-            r->clock, r->data[0], r->data[1], r->data[2], channel / PIPELINES,
-            'A' + channel % PIPELINES,
+            r->clock, r->data[0], r->data[1], r->data[2],
+            'A' + channel % PIPELINES, channel / PIPELINES,
             r->channel_prev ? "" : " - first on channel");
     if (r->channel_prev == NULL)
         return;
@@ -146,7 +152,7 @@ static void seed (void)
         clock += FREQ / 50;
         clock -= clock % STAGES;
         clock += stage;
-        // The clock comparison is registered, giving a one-cycle delay.
+
         load_md5 (pipe, clock, i + 256, i + 256, i + 256);
         usleep (20000);
 
