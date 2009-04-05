@@ -13,7 +13,7 @@ library work;
 use work.defs.all;
 
 entity md5 is
-  Port (input : in word96_t;
+  port (input : in word96_t;
         output : out word128_t;
         bmon : out dataset_t (0 to 64);
         Clk : in std_logic);
@@ -46,49 +46,6 @@ architecture Behavioral of md5 is
     x"655b59c3", x"8f0ccc92", x"ffeff47d", x"85845dd1",
     x"6fa87e4f", x"fe2ce6e0", x"a3014314", x"4e0811a1",
     x"f7537e82", x"bd3af235", x"2ad7d2bb", x"eb86d391");
-
-  function hexify (n : nibble_t) return byte_t is
-    variable alpha : std_logic := n(3) and (n(2) or n(1));
-    variable result : byte_t;
-  begin
-    case n is
-      when x"1"=> return x"31";
-      when x"2"=> return x"32";
-      when x"3"=> return x"33";
-      when x"4"=> return x"34";
-      when x"5"=> return x"35";
-      when x"6"=> return x"36";
-      when x"7"=> return x"37";
-      when x"8"=> return x"38";
-      when x"9"=> return x"39";
-      when x"a"=> return x"61";
-      when x"b"=> return x"62";
-      when x"c"=> return x"63";
-      when x"d"=> return x"64";
-      when x"e"=> return x"65";
-      when x"f"=> return x"66";
-      when others => return x"30";
-    end case;
-  end hexify;
-
-  function hexify16 (n : std_logic_vector (15 downto 0)) return word_t is
-    variable result : word_t;
-  begin
-    result( 7 downto  0) := hexify (n ( 3 downto  0));
-    result(15 downto  8) := hexify (n ( 7 downto  4));
-    result(23 downto 16) := hexify (n (11 downto  8));
-    result(31 downto 24) := hexify (n (15 downto 12));
-    return result;
-  end hexify16;
-
-  function rotl (x : word_t; n : integer) return word_t is
-  begin
-    if n = 0 then
-      return x;
-    else
-      return x(31 - n downto 0) & x(31 downto 31 - n + 1);
-    end if;
-  end rotl;
 
   function FF(x : word_t; y : word_t; z : word_t)
     return word_t is
@@ -174,6 +131,13 @@ architecture Behavioral of md5 is
     end if;
   end;
 
+  -- Should a round use a DSP?  Take up 21 DSP pairs per pipeline.
+  function use_dsp (n : integer) return boolean is
+    variable idx : integer := index (n);
+  begin
+    return idx mod 16 >= 8 and idx mod 16 <= 12;
+  end;
+
   signal A : dataset_t (0 to 64);
   signal B : dataset_t (0 to 64);
   signal C : dataset_t (0 to 64);
@@ -209,13 +173,6 @@ architecture Behavioral of md5 is
 
   constant iAneg : word_t := x"00000000" - iA;
 
-  constant mask1 : dataset_t (0 to 5) := (
-    x"20202020", x"20202020", x"20202020",
-	 x"20202020", x"00802020", x"00000000");
-  constant mask0 : dataset_t (0 to 5) := (
-    x"7f7f7f7f", x"7f7f7f7f", x"7f7f7f7f",
-	 x"7f7f7f7f", x"00807f7f", x"00000000");
-
   component delay is
     generic (N : integer);
     port (clk: in std_logic; D: in word_t; Q: out word_t);
@@ -235,7 +192,7 @@ begin
   C(0) <= iC;
   D(0) <= iD;
 
-  bmon <= B;
+  bmon(0 to 63) <= yy;
 
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)
@@ -261,27 +218,23 @@ begin
   end generate;
 
   -- Load x0 through x5 with the hexified inputs.
-  xx(0) <= hexify16 (input (15 downto  0));
-  xx(1) <= hexify16 (input (31 downto 16));
-  xx(2) <= hexify16 (input (47 downto 32));
-  xx(3) <= hexify16 (input (63 downto 48));
-  xx(4)(7 downto 0) <= hexify (input (67 downto 64));
-  xx(4)(15 downto 8) <= hexify (input (71 downto 68));
-  xx(4)(31 downto 16) <= x"0080";
-  xx(5) <= x"00000000";
+  genhex : for i in 0 to 5 generate
+    xx(i) <= hexword (input, i);
+  end generate;
 
   input_mask: for i in 0 to 5 generate
-    yy(i)      <= (mask1(i) or Fx(i)) and mask0(i);
-    yy(i + 16) <= (mask1(i) or Gx(i)) and mask0(i);
-    yy(i + 32) <= (mask1(i) or Hx(i)) and mask0(i);
-    yy(i + 48) <= (mask1(i) or Ix(i)) and mask0(i);
+    yy(i)      <= (maskw0(i) or Fx(i)) and maskw1(i);
+    yy(i + 16) <= (maskw0(i) or Gx(i)) and maskw1(i);
+    yy(i + 32) <= (maskw0(i) or Hx(i)) and maskw1(i);
+    yy(i + 48) <= (maskw0(i) or Ix(i)) and maskw1(i);
   end generate;
 
   input_constants: for i in 0 to 3 generate
-    input_zeros: for j in 6 to 13 generate
+	 yy(i * 16 + 6) <= maskw0(6); -- x80 for >=92 bits.
+    input_zeros: for j in 7 to 13 generate
       yy(i * 16 + j) <= x"00000000";
     end generate;
-    yy(i * 16 + 14) <= x"00000090";
+    yy(i * 16 + 14) <= conv_std_logic_vector ((bits + 3) / 4, 29) & "000";
     yy(i * 16 + 15) <= x"00000000";
   end generate;
 
@@ -307,7 +260,7 @@ begin
         end if;
       end process;
     end generate;
-    dsp_round: if index (i) mod 16 >= 6 and index (i) mod 16 <= 10 generate
+    dsp_round: if use_dsp (i) generate
       add : adder3
         port map (
           addend2=> func(i),
@@ -316,8 +269,8 @@ begin
           Sum => sum(i),
           Clk => Clk);
     end generate;
-    by_hand_round: if index (i) mod 16 > 10 generate
-      process (Clk) -- Only kk is constant.
+    by_hand_round: if index (i) mod 16 >= 6 and not use_dsp(i) generate
+      process (Clk)
       begin
         if Clk'event and Clk = '1' then
           sum1(i) <= A(i); -- another cycle of delay.

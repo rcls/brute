@@ -102,7 +102,7 @@ architecture Behavioral of control is
   signal B_hitram_o : word144_t;
   signal A_hit_idx : byte_t;
   signal B_hit_idx : byte_t;
-  
+
 begin
 
   BSCAN_SPARTAN3_inst : BSCAN_SPARTAN3A
