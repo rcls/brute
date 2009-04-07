@@ -174,8 +174,12 @@ int main()
     int index[PIPELINES];
     uint64_t clock[PIPELINES];
 
-    memset (index, 0, sizeof (index));
-    memset (clock, 0, sizeof (clock));
+    for (int i = 0; i != PIPELINES; ++i) {
+        // Ram slot 0 tends to end up getting spurious data on clock 0 - so
+        // start looking from slot 1.
+        index[i] = 1;
+        clock[i] = 0;
+    }
 
     while (true) {
         bool got = false;

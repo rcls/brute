@@ -42,6 +42,7 @@ void check (int pipeline)
         if (clock1 <= clock && clock <= clock2)
             printf ("\n%12lu %08x %08x %08x [%lu]\n",
                     clock, data[0], data[1], data[2], clock % STAGES);
+        if (clock == load_clock)
             got_load = true;
 
         if (clock == sample_clock) {
