@@ -100,9 +100,10 @@ static int channels_seeded;
 
 static void add_result (result_t * result)
 {
-    static result_t * hash[256];
+#define HASH_SIZE (1 << (BITS / 2 - TRIGGER_BITS))
+    static result_t * hash[HASH_SIZE];
 
-    int channel = result->clock % STAGES;
+    int channel = result->clock % HASH_SIZE;
     channel = channel * PIPELINES + result->ram_slot % PIPELINES;
 
     if (channel_last[channel] == NULL) {
