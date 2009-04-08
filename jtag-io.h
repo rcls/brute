@@ -9,7 +9,7 @@
 #define FREQ (150 * 1000 * 1000)
 #define MATCH_DELAY 3
 
-#define BITS 72
+#define BITS 80
 #define NIBBLES ((BITS + 3) / 4)
 #define LAST_NIBBLE_MASK (15 >> (3 & -BITS))
 

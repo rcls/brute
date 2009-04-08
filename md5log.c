@@ -51,7 +51,7 @@ static void run (uint32_t w0, uint32_t w1, uint32_t w2,
     w[11] = 0;
     w[12] = 0;
     w[13] = 0;
-    w[14] = 0x90;
+    w[14] = 0xa0;
     w[15] = 0;
 
     //Initialize variables:
@@ -118,10 +118,10 @@ int main()
     uint32_t words[4] = { 0xe040a4f0, 0x7d4a91b5, 0x694f8475, 0x4e2443bc };
     //uint32_t words[4] = { 0, 0, 0, 0 };
 
-    for (int i = 0; i != 18; ++i)
+    for (int i = 0; i != 20; ++i)
         bytes[i] = hexify (words[i/8] >> (4 * (i%8)));
-    bytes[18] = 0x80;
-    for (int i = 19; i != 31; ++i)
+    bytes[20] = 0x80;
+    for (int i = 21; i != 31; ++i)
         bytes[i] = 0;
 
     uint32_t exp[8];
