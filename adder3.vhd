@@ -15,7 +15,7 @@ use work.defs.all;
 -- Compute (OneA + OneB) + Two.
 entity adder3 is
   -- Addends with 2, 4 and 5 cycle latency to sum.
-  port (addend2 : in word_t;
+  port (addend1 : in word_t;
         addend4 : in word_t;
         addend5 : in word_t;
         Sum  : out word_t;
@@ -23,16 +23,19 @@ entity adder3 is
 end adder3;
 
 architecture Behavioral of adder3 is
-  signal addend2_36 : std_logic_vector (35 downto 0);
+  signal addend1_48 : std_logic_vector (47 downto 0);
   signal addend4_48 : word48_t;
   signal addend5_36 : std_logic_vector (35 downto 0);
   signal intermediate : word48_t;
+  signal intermediate36 : std_logic_vector (35 downto 0);
   signal sum48 : word48_t;
 
 begin
-  addend2_36 <= x"0" & addend2;
+  addend1_48 <= x"0000" & addend1;
   addend4_48 <= x"0000" & addend4;
   addend5_36 <= x"0" & addend5;
+
+  intermediate36 <= x"0" & intermediate (31 downto 0);
 
   Sum <= sum48 (31 downto 0);
 
@@ -89,7 +92,7 @@ begin
       B1REG => 1,
       CARRYINREG => 0,
       CARRYINSEL => "OPMODE5",
-      CREG => 1,
+      CREG => 0,
       DREG => 1,
       MREG => 1, -- Dummy, multiplier not in use.
       OPMODEREG => 0, -- Constant anyway.
@@ -101,9 +104,9 @@ begin
       P=> Sum48,
       PCOUT=> open,
 
-      A=> addend2_36 (35 downto 18),
-      B=> addend2_36 (17 downto 0),
-      C=> intermediate,
+      A=> intermediate36 (35 downto 18),
+      B=> intermediate36 (17 downto 0),
+      C=> addend1_48,
       CARRYIN=> '0',
       CEA=> '1',
       CEB=> '1',

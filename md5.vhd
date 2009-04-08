@@ -131,13 +131,6 @@ architecture Behavioral of md5 is
     end if;
   end;
 
-  -- Should a round use a DSP?  Take up 21 DSP pairs per pipeline.
-  function use_dsp (n : integer) return boolean is
-    variable idx : integer := index (n);
-  begin
-    return idx mod 16 >= 8 and idx mod 16 <= 12;
-  end;
-
   signal A : dataset_t (0 to 64);
   signal B : dataset_t (0 to 64);
   signal C : dataset_t (0 to 64);
@@ -181,7 +174,7 @@ architecture Behavioral of md5 is
   -- Compute (OneA + OneB) + Two using DSPs.  We do this for rounds 6 to 10
   -- of each stage.
   component adder3 is
-    port (addend2 : in word_t; addend4 : in word_t; addend5 : in word_t;
+    port (addend1 : in word_t; addend4 : in word_t; addend5 : in word_t;
           Sum : out word_t; Clk : std_logic);
   end component;
 
@@ -192,7 +185,15 @@ begin
   C(0) <= iC;
   D(0) <= iD;
 
-  bmon(0 to 63) <= yy;
+--  bmon(0 to 5) <= xx;
+--  bmon(16 to 31) <= yy(0 to 15);
+  bmon <= B;
+--  bmon(0) <= B(2);
+--  bmon(1) <= B(3);
+--  bmon(2) <= sum1(2);
+--  bmon(3) <= sum(2);
+--  bmon(4) <= yy(2);
+--  bmon(5) <= func(2);
 
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)
@@ -208,7 +209,7 @@ begin
   --  Fx0d: delay generic map(na=> 1, nb=>1)
   --    port map (D=>  x0,   Qa=>  open,  Db=>  x1, Qb=>  Fx(1), Clk=> Clk);
   FxdGen: for i in 1 to 5 generate
-    Fxd: delay generic map(N=> 3*i+1) port map (D=> xx(i), Q=> Fx(i), Clk=>Clk);
+    Fxd: delay generic map(N=> 3*i-1) port map (D=> xx(i), Q=> Fx(i), Clk=>Clk);
   end generate;
 
   XxdGen: for i in 0 to 5 generate
@@ -223,10 +224,14 @@ begin
   end generate;
 
   input_mask: for i in 0 to 5 generate
-    yy(i)      <= (maskw0(i) or Fx(i)) and maskw1(i);
-    yy(i + 16) <= (maskw0(i) or Gx(i)) and maskw1(i);
-    yy(i + 32) <= (maskw0(i) or Hx(i)) and maskw1(i);
-    yy(i + 48) <= (maskw0(i) or Ix(i)) and maskw1(i);
+--    yy(i)      <= (maskw0(i) or Fx(i)) and maskw1(i);
+--    yy(i + 16) <= (maskw0(i) or Gx(i)) and maskw1(i);
+--    yy(i + 32) <= (maskw0(i) or Hx(i)) and maskw1(i);
+--    yy(i + 48) <= (maskw0(i) or Ix(i)) and maskw1(i);
+    yy(i)      <= Fx(i);
+    yy(i + 16) <= Gx(i);
+    yy(i + 32) <= Hx(i);
+    yy(i + 48) <= Ix(i);
   end generate;
 
   input_constants: for i in 0 to 3 generate
@@ -250,7 +255,7 @@ begin
   -- func(i)+yy(index(i))+kk(i)+a(i) with a two cycle latency.  The strategy
   -- depends on index(i).
   round_sum: for i in 0 to 63 generate
-    data_round: if index (i) mod 16 < 6 generate
+    data0_round: if index (i) mod 16 = 0 generate
       process (Clk) -- Only kk is constant.
       begin
         if Clk'event and Clk = '1' then
@@ -260,20 +265,26 @@ begin
         end if;
       end process;
     end generate;
-    dsp_round: if use_dsp (i) generate
+    dsp_round: if index(i) mod 16 > 0 and index(i) mod 16 < 6 generate
+      process (Clk) -- Only kk is constant.
+      begin
+        if Clk'event and Clk = '1' then
+          sum1(i) <= func(i) + kk(i);
+        end if;
+      end process;
       add : adder3
         port map (
-          addend2=> func(i),
-          addend4=> kk(i), -- yy(i) is zero, kk(i) is constant.
-          addend5=> D(i-1), -- A(i) one round prior.
-          Sum => sum(i),
-          Clk => Clk);
+          addend1=> sum1(i),
+          addend4=> yy(index(i)),
+          addend5=> D(i-1),
+          Sum=>sum(i),
+          Clk=>Clk);
     end generate;
-    by_hand_round: if index (i) mod 16 >= 6 and not use_dsp(i) generate
+    by_hand_round: if index (i) mod 16 >= 6 generate
       process (Clk)
       begin
         if Clk'event and Clk = '1' then
-          sum1(i) <= A(i); -- another cycle of delay.
+          sum1(i) <= A(i);
           sum2(i) <= func(i) + (yy(index(i)) + kk(i));
           sum(i) <= sum1(i) + sum2(i);
         end if;
