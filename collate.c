@@ -103,7 +103,7 @@ static void add_result (result_t * result)
 #define HASH_SIZE (1 << (BITS / 2 - TRIGGER_BITS))
     static result_t * hash[HASH_SIZE];
 
-    int channel = result->clock % HASH_SIZE;
+    int channel = result->clock % STAGES;
     channel = channel * PIPELINES + result->ram_slot % PIPELINES;
 
     if (channel_last[channel] == NULL) {
@@ -127,7 +127,7 @@ static void add_result (result_t * result)
         return;
 
     // Add to the hash table.
-    result_t ** bucket = &hash[r->data[1] & 255];
+    result_t ** bucket = &hash[r->data[1] % HASH_SIZE];
     // Check for 68 bits of agreement.
     for ( ; *bucket; bucket = &(*bucket)->hash_next)
         if (match (r->data, (*bucket)->data))
@@ -175,9 +175,9 @@ int main()
     int index[PIPELINES];
     uint64_t clock[PIPELINES];
 
+    uint64_t iclk = read_clock();
+
     for (int i = 0; i != PIPELINES; ++i) {
-        // Ram slot 0 tends to end up getting spurious data on clock 0 - so
-        // start looking from slot 1.
         index[i] = 1;
         clock[i] = 0;
     }
@@ -195,7 +195,8 @@ int main()
                 got = true;
                 result.ram_slot = (index[pipe] & 255) * PIPELINES + pipe;
                 clock[pipe] = result.clock;
-                add_result (&result);
+                if (result.clock > iclk)
+                    add_result (&result);
                 ++index[pipe];
             }
         if (got)
