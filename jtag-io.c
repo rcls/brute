@@ -77,8 +77,9 @@ static uint64_t adjust_clock (uint64_t c)
     uint64_t o_minus = labs (c_minus - clock_last);
     uint64_t o_plus = labs (c_plus - clock_last);
 
-    if (o >= (1ul << 32) && o_minus >= (1ul << 32) && o_plus >= (1ul << 32))
-        printf_exit ("Clock jumps by more than 1<<32\n");
+    if (o >= (1ul << 46) && o_minus >= (1ul << 32) && o_plus >= (1ul << 46))
+        printf_exit ("Clock jumps by too much (%lu -> %lu)\n",
+                     clock_last & mask48, c & mask48);
 
     if (o_minus <= o) {
         c = c_minus;
@@ -315,7 +316,7 @@ uint64_t read_clock (void)
 uint64_t start_clock (void)
 {
     uint64_t c = read_clock_raw();
-    c = clock_max_external & (-1ul << 48);
+    c += clock_max_external & (-1ul << 48);
     if (c <= clock_max_external)
         c += 1ul << 48;
 

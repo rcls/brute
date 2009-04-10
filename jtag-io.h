@@ -10,7 +10,7 @@
 #define MATCH_DELAY 3
 
 // Moving to 96
-#define BITS 80
+#define BITS 88
 #define NIBBLES ((BITS + 3) / 4)
 #define LAST_NIBBLE_MASK (15 >> (3 & -BITS))
 

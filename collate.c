@@ -48,6 +48,7 @@ static result_t * hash[HASH_SIZE];
 
 // Number of recorded checksums.
 static uint64_t cycle_count;
+static int result_count;
 
 
 static bool match (const uint32_t A[3], const uint32_t B[3])
@@ -60,7 +61,7 @@ static bool match (const uint32_t A[3], const uint32_t B[3])
 
 static void finish_sync (result_t * MA, result_t * MB)
 {
-    printf ("HIT!!!!\n");
+    printf ("\nHIT!!!!\n");
     printf ("%12lu %08x %08x %08x %c[%3lu]\n",
             MA->clock, MA->data[0], MA->data[1], MA->data[2],
             'A' + MA->pipe, MA->clock % STAGES);
@@ -112,6 +113,7 @@ static void finish_sync (result_t * MA, result_t * MB)
             CB.clock, CB.clock % STAGES, 'A' + CB.pipe, window - i,
             CA.data[0], CA.data[1], CA.data[2], NA[0], NA[1], NA[2],
             CB.data[0], CB.data[1], CB.data[2], NB[0], NB[1], NB[2]);
+            fflush (NULL);
             return;
         }
 
@@ -197,6 +199,7 @@ static void add_result (result_t * result, bool for_real)
     else {
         r->channel_prev = channel_last[channel];
         cycle_count += (r->clock - r->channel_prev->clock) / STAGES;
+        ++result_count;
     }
     channel_last[channel] = r;
 
@@ -209,11 +212,13 @@ static void add_result (result_t * result, bool for_real)
     if (BITS & 1)
         total *= M_SQRT2;
 
-    printf ("\r%g%% %12lu %08x %08x %08x %c[%3u]%s" WIPE,
-            100 * cycle_count / total,
+    printf ("\r%g%% %u %12lu %08x %08x %08x %c[%3u]%s" WIPE,
+            100 * cycle_count / total, result_count,
             r->clock, r->data[0], r->data[1], r->data[2],
             'A' + r->pipe, channel / PIPELINES,
-            r->channel_prev ? "" : " - first on channel");
+            r->channel_prev ? "" : " init");
+
+    fflush (NULL);
 
     if (r->channel_prev == NULL)
         return;
@@ -439,7 +444,6 @@ static void seed (void)
 
         ++done;
     }
-    printf ("\n");
 }
 
 
@@ -455,14 +459,13 @@ int main (int argc, const char * const argv[])
     read_log_file();
     catch_up_hits();
 
-    exit (0);                           /* FIXME */
-
     open_serial();
     jtag_reset();
 
     // Wipe out channel lasts, just to make sure we don't create false
     // channel_prev links.
     memset (channel_last, 0, sizeof (channel_last));
+    channels_seeded = 0;
 
     // Line buffer all output.
     setvbuf (stdout, NULL, _IOLBF, 0);
