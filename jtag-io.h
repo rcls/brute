@@ -9,10 +9,12 @@
 #define FREQ (150 * 1000 * 1000)
 #define MATCH_DELAY 3
 
+// Moving to 96
 #define BITS 80
 #define NIBBLES ((BITS + 3) / 4)
 #define LAST_NIBBLE_MASK (15 >> (3 & -BITS))
 
+// Moving to 30
 #define TRIGGER_BITS 28
 #define TRIGGER_MASK (TRIGGER_BITS == 32 ? 0xfffffff : (1 << TRIGGER_BITS) - 1)
 
@@ -35,6 +37,9 @@ uint64_t read_clock (void);
 uint32_t read_id (void);
 void jtag_reset (void);
 void open_serial (void);
+
+void external_clock (uint64_t c);
+uint64_t start_clock (void);
 
 // Nothing to do with jtag...
 void transform (const uint32_t din[3], uint32_t dout[3]);

@@ -7,7 +7,7 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
 package defs is
 
   -- Number of bits to truncate MD5 to.
-  constant bits : integer := 80;
+  constant bits : integer := 96;
 
   subtype nibble_t is std_logic_vector (3 downto 0);
   subtype byte_t is std_logic_vector (7 downto 0);

@@ -192,7 +192,7 @@ begin
   C(0) <= iC;
   D(0) <= iD;
 
-  bmon(0 to 63) <= yy;
+  bmon <= B;
 
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)

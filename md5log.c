@@ -31,28 +31,10 @@ static uint32_t leftrotate (uint32_t x, int r)
 }
 
 
-static void run (uint32_t w0, uint32_t w1, uint32_t w2,
-                 uint32_t w3, uint32_t w4, uint32_t w5)
+static void run (const uint32_t w[16])
 {
-    printf ("%08x %08x %08x %08x %08x %08x\n", w0, w1, w2, w3, w4, w5);
-
-    uint32_t w[16];
-    w[0] = w0;
-    w[1] = w1;
-    w[2] = w2;
-    w[3] = w3;
-    w[4] = w4;
-    w[5] = w5;
-    w[6] = 0;
-    w[7] = 0;
-    w[8] = 0;
-    w[9] = 0;
-    w[10] = 0;
-    w[11] = 0;
-    w[12] = 0;
-    w[13] = 0;
-    w[14] = 0xa0;
-    w[15] = 0;
+    printf ("%08x %08x %08x %08x %08x %08x %08x\n",
+            w[0], w[1], w[2], w[3], w[4], w[5], w[6]);
 
     //Initialize variables:
     static const uint32_t h0 = 0x67452301;
@@ -114,22 +96,24 @@ int main()
 {
     init_k();
 //    run (0,0,0,0);
-    unsigned char bytes[32];
+    unsigned char bytes[64];
     uint32_t words[4] = { 0xe040a4f0, 0x7d4a91b5, 0x694f8475, 0x4e2443bc };
     //uint32_t words[4] = { 0, 0, 0, 0 };
 
-    for (int i = 0; i != 20; ++i)
+    for (int i = 0; i != 24; ++i)
         bytes[i] = hexify (words[i/8] >> (4 * (i%8)));
-    bytes[20] = 0x80;
-    for (int i = 21; i != 31; ++i)
+    bytes[24] = 0x80;
+    for (int i = 25; i != 64; ++i)
         bytes[i] = 0;
 
-    uint32_t exp[8];
-    for (int i = 0; i != 8; ++i)
-        exp[i] = bytes[i*4] + bytes[i*4+1] * 256
+    uint32_t w[16];
+    for (int i = 0; i != 14; ++i)
+        w[i] = bytes[i*4] + bytes[i*4+1] * 256
             + bytes[i*4+2] * 65536 + bytes[i*4+3] * 16777216;
+    w[14] = 0xc0;
+    w[15] = 0;
 
-    run (exp[0], exp[1], exp[2], exp[3], exp[4], exp[5]);
+    run (w);
 
     return 0;
 }

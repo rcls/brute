@@ -53,6 +53,54 @@ void printf_exit (const char * w, ...)
     exit (EXIT_FAILURE);
 }
 
+
+// Reading in a log file, we track the read-in clock values, so we can adjust
+// the current clock to be monotonic.
+static uint64_t clock_max_external;
+// The last adjusted clock value.
+static uint64_t clock_last;
+
+// Adjust a clock value by setting the top 16 bits to be close to clock_last,
+// while preserving the bottom 48 bits.
+static uint64_t adjust_clock (uint64_t c)
+{
+    static const uint64_t mask48 = (1ul << 48) - 1;
+    // Apply the top bits of clock_last to c.
+    c = (c & mask48) | (clock_last & ~mask48);
+
+    // We select whichever of c, c +/- (1<<48) is closest to clock_last.  We
+    // error if this jumps by more than 1<<32.
+    uint64_t c_minus = c - (1ul << 48);
+    uint64_t c_plus = c + (1ul << 48);
+
+    uint64_t o = labs (c - clock_last);
+    uint64_t o_minus = labs (c_minus - clock_last);
+    uint64_t o_plus = labs (c_plus - clock_last);
+
+    if (o >= (1ul << 32) && o_minus >= (1ul << 32) && o_plus >= (1ul << 32))
+        printf_exit ("Clock jumps by more than 1<<32\n");
+
+    if (o_minus <= o) {
+        c = c_minus;
+        printf ("Clock slips back [now at %lu 48-bit wraps]\n", c >> 48);
+    }
+    else if (o_plus <= 0) {
+        c = c_plus;
+        printf ("Clock wraps [now at %lu 48-bit wraps]\n", c >> 48);
+    }
+
+    clock_last = c;;
+    return c;
+}
+
+
+void external_clock (uint64_t c)
+{
+    if (c > clock_max_external)
+        clock_max_external = c;
+}
+
+
 static void write_data (const unsigned char * start,
                         const unsigned char * end)
 {
@@ -233,11 +281,11 @@ void read_result (int pipeline,
     data[0] = parse_bits (obuf, 32);
     data[1] = parse_bits (obuf + 32, 32);
     data[2] = parse_bits (obuf + 64, 32);
-    *clock = parse_bits (obuf + 96, 48);
+    *clock = adjust_clock (parse_bits (obuf + 96, 48));
 }
 
 
-uint64_t read_clock (void)
+static uint64_t read_clock_raw (void)
 {
     unsigned char obuf[2048];
     unsigned char * p = obuf;
@@ -255,6 +303,25 @@ uint64_t read_clock (void)
     write_read (obuf, p, 48);
 
     return parse_bits (obuf, 48);
+}
+
+
+uint64_t read_clock (void)
+{
+    return adjust_clock (read_clock_raw());
+}
+
+
+uint64_t start_clock (void)
+{
+    uint64_t c = read_clock_raw();
+    c = clock_max_external & (-1ul << 48);
+    if (c <= clock_max_external)
+        c += 1ul << 48;
+
+    printf ("Initial clock at %lu wraps\n", c >> 48);
+    clock_last = c;
+    return c;
 }
 
 

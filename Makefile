@@ -9,7 +9,7 @@ md5log: -lm
 
 check: jtag-io.o -lcrypto
 
-collate: jtag-io.o -lcrypto
+collate: jtag-io.o -lcrypto -lpthread
 
 #all: brute
 
