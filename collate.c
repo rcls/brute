@@ -40,7 +40,7 @@ static const uint32_t mask2 = BITS >= 64 ? (1 << (BITS - 64)) - 1 : 0;
 
 // The last result recorded on each channel.
 static result_t * channel_last[STAGES * PIPELINES];
-static int channels_seeded;
+static bool channels_seeded;
 
 // Hash table of results.
 #define HASH_SIZE (1 << (BITS / 2 - TRIGGER_BITS))
@@ -61,7 +61,7 @@ static bool match (const uint32_t A[3], const uint32_t B[3])
 
 static void finish_sync (result_t * MA, result_t * MB)
 {
-    printf ("\nHIT!!!!\n");
+    printf ("\n\aHIT!!!!\n");
     printf ("%12lu %08x %08x %08x %c[%3lu]\n",
             MA->clock, MA->data[0], MA->data[1], MA->data[2],
             'A' + MA->pipe, MA->clock % STAGES);
@@ -184,11 +184,9 @@ static void add_result (result_t * result, bool for_real)
     int channel = result->clock % STAGES;
     channel = channel * PIPELINES + result->pipe;
 
-    if (channel_last[channel] == NULL) {
-        if ((result->data[0] & TRIGGER_MASK) == 0)
-            return;        // Ignore pre-seed data.
-        ++channels_seeded;
-    }
+    if (channel_last[channel] == NULL
+        && (result->data[0] & TRIGGER_MASK) == 0)
+        return;                         // Ignore pre-seed data.
 
     result_t * r = malloc (sizeof (result_t));
     *r = *result;
@@ -212,7 +210,7 @@ static void add_result (result_t * result, bool for_real)
     if (BITS & 1)
         total *= M_SQRT2;
 
-    printf ("\r%g%% %u %12lu %08x %08x %08x %c[%3u]%s" WIPE,
+    printf ("\r%.2f%% %u %lu %08x %08x %08x %c[%3u]%s" WIPE,
             100 * cycle_count / total, result_count,
             r->clock, r->data[0], r->data[1], r->data[2],
             'A' + r->pipe, channel / PIPELINES,
@@ -227,8 +225,12 @@ static void add_result (result_t * result, bool for_real)
     result_t ** bucket = &hash[r->data[1] % HASH_SIZE];
     // Check for all bits of agreement.
     for ( ; *bucket; bucket = &(*bucket)->hash_next)
-        if (for_real && match (r->data, (*bucket)->data))
+        if (for_real && match (r->data, (*bucket)->data)) {
             finish_async (r, *bucket);
+            // Force reseeding of the channel.
+            channel_last[channel] = NULL;
+            channels_seeded = false;
+        }
 
     *bucket = r;
 }
@@ -444,6 +446,10 @@ static void seed (void)
 
         ++done;
     }
+
+    // If we didn't find anything to seed, don't bother try again.
+    if (done == 0)
+        channels_seeded = true;
 }
 
 
@@ -502,7 +508,7 @@ int main (int argc, const char * const argv[])
             }
         if (got)
             continue;
-        if (channels_seeded < STAGES * PIPELINES)
+        if (!channels_seeded)
             seed();
         else
             sleep (1);
