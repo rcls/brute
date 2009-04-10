@@ -1,6 +1,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <math.h>
 #include <openssl/md5.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -12,7 +13,7 @@
 
 #include "jtag-io.h"
 
-#define WIPE "\r\e[J"
+#define WIPE "\e[J"
 
 static FILE * datafile;
 
@@ -30,11 +31,24 @@ typedef struct result_t {
 // E clock pipe clock pipe a1 a2 a3 b1 b2 b3 [failure from previous result]
 
 
-const uint32_t mask0 = BITS >= 32 ? 0xfffffff : (1 << BITS) - 1;
-const uint32_t mask1 = BITS >= 32
-    ? BITS >= 64 ? 0xfffffff : (1 << (BITS - 32)) - 1
-    : 0;
-const uint32_t mask2 = BITS >= 64 ? (1 << (BITS - 64)) - 1 : 0;
+// The bit masks for hit comparisons.
+static const uint32_t mask0 = BITS >= 32 ? 0xfffffff : (1 << BITS) - 1;
+static const uint32_t mask1 = BITS >= 32
+    ? BITS >= 64 ? 0xfffffff : (1 << (BITS - 32)) - 1 : 0;
+static const uint32_t mask2 = BITS >= 64 ? (1 << (BITS - 64)) - 1 : 0;
+
+
+// The last result recorded on each channel.
+static result_t * channel_last[STAGES * PIPELINES];
+static int channels_seeded;
+
+// Hash table of results.
+#define HASH_SIZE (1 << (BITS / 2 - TRIGGER_BITS))
+static result_t * hash[HASH_SIZE];
+
+// Number of recorded checksums.
+static uint64_t cycle_count;
+
 
 static bool match (const uint32_t A[3], const uint32_t B[3])
 {
@@ -46,7 +60,7 @@ static bool match (const uint32_t A[3], const uint32_t B[3])
 
 static void finish_sync (result_t * MA, result_t * MB)
 {
-    printf (WIPE "HIT!!!!\n");
+    printf ("HIT!!!!\n");
     printf ("%12lu %08x %08x %08x %c[%3lu]\n",
             MA->clock, MA->data[0], MA->data[1], MA->data[2],
             'A' + MA->pipe, MA->clock % STAGES);
@@ -87,11 +101,11 @@ static void finish_sync (result_t * MA, result_t * MB)
         if (match (NA, NB)) {
             fprintf (datafile, "H %lu %u %lu %u %lu %08x %08x %08x "
                      "%08x %08x %08x %08x %08x %08x %08x %08x %08x\n",
-                     CA.clock, CB.pipe, CB.clock, CB.pipe, window - i,
+                     MA->clock, MA->pipe, MB->clock, MB->pipe, window - i,
                      CA.data[0], CA.data[1], CA.data[2], NA[0], NA[1], NA[2],
                      CB.data[0], CB.data[1], CB.data[2], NB[0], NB[1], NB[2]);
 
-            printf (WIPE "Hit %lu[%lu]%c %lu[%lu]%c, delta %lu\n"
+            printf ("\rHit %lu[%lu]%c %lu[%lu]%c, delta %lu " WIPE "\n"
                     "%08x %08x %08x -> %08x %08x %08x\n"
                     "%08x %08x %08x -> %08x %08x %08x\n",
             CA.clock, CA.clock % STAGES, 'A' + CA.pipe,
@@ -148,6 +162,7 @@ static void * finish_thread_func (void * p)
 
 static void finish_async (result_t * A, result_t * B)
 {
+    printf ("\n");
     result_t ** items = malloc (2 * sizeof (result_t *));
     if (items == NULL)
         printf_exit ("Out of memory processing hit\n");
@@ -161,13 +176,7 @@ static void finish_async (result_t * A, result_t * B)
 }
 
 
-static result_t * channel_last[STAGES * PIPELINES];
-static int channels_seeded;
-
-#define HASH_SIZE (1 << (BITS / 2 - TRIGGER_BITS))
-static result_t * hash[HASH_SIZE];
-
-static void add_result (result_t * result, bool hit)
+static void add_result (result_t * result, bool for_real)
 {
 
     int channel = result->clock % STAGES;
@@ -185,18 +194,27 @@ static void add_result (result_t * result, bool hit)
 
     if (r->data[0] & TRIGGER_MASK)
         r->channel_prev = NULL;
-    else
+    else {
         r->channel_prev = channel_last[channel];
+        cycle_count += (r->clock - r->channel_prev->clock) / STAGES;
+    }
     channel_last[channel] = r;
 
-    if (hit)
+    if (for_real)
         fprintf (datafile, "R %lu %u %x %x %x\n",
                  r->clock, r->pipe, r->data[0], r->data[1], r->data[2]);
 
-    printf (WIPE "%12lu %08x %08x %08x %c[%3u]%s",
+    // Calculate approximate done percentage.
+    double total = 1ul << (BITS / 2);
+    if (BITS & 1)
+        total *= M_SQRT2;
+
+    printf ("\r%g%% %12lu %08x %08x %08x %c[%3u]%s" WIPE,
+            100 * cycle_count / total,
             r->clock, r->data[0], r->data[1], r->data[2],
             'A' + r->pipe, channel / PIPELINES,
             r->channel_prev ? "" : " - first on channel");
+
     if (r->channel_prev == NULL)
         return;
 
@@ -204,7 +222,7 @@ static void add_result (result_t * result, bool hit)
     result_t ** bucket = &hash[r->data[1] % HASH_SIZE];
     // Check for all bits of agreement.
     for ( ; *bucket; bucket = &(*bucket)->hash_next)
-        if (hit && match (r->data, (*bucket)->data))
+        if (for_real && match (r->data, (*bucket)->data))
             finish_async (r, *bucket);
 
     *bucket = r;
@@ -277,7 +295,7 @@ static void read_log_hit (void)
         return;
     }
 
-    printf (WIPE "Read hit %lu[%lu]%c %lu[%lu]%c, delta %lu\n"
+    printf ("\nRead hit %lu[%lu]%c %lu[%lu]%c, delta %lu\n"
             "%08x %08x %08x -> %08x %08x %08x\n"
             "%08x %08x %08x -> %08x %08x %08x\n",
             CA.clock, CA.clock % STAGES, 'A' + CA.pipe,
@@ -364,11 +382,11 @@ static void catch_up_hit (result_t * A, result_t * B)
     hit.pipeA  = A->pipe;
     hit.pipeB  = B->pipe;
 
-    // Now do a binary search to see if we've already logged the details.
+    // Do a binary search to see if we've already logged the details.
     int low = -1;
     int high = logged_hit_count;
     while (high - low > 1) {
-        int mid = (high + low) >> 2;
+        int mid = (high + low) >> 1;
         int c = logged_hit_compare (&logged_hit_list[mid], &hit);
         if (c == 0)
             return;
