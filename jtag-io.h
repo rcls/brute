@@ -9,13 +9,11 @@
 #define FREQ (150 * 1000 * 1000)
 #define MATCH_DELAY 3
 
-// Moving to 96
-#define BITS 88
+#define BITS 96
 #define NIBBLES ((BITS + 3) / 4)
 #define LAST_NIBBLE_MASK (15 >> (3 & -BITS))
 
-// Moving to 30
-#define TRIGGER_BITS 28
+#define TRIGGER_BITS 30
 #define TRIGGER_MASK (TRIGGER_BITS == 32 ? 0xfffffff : (1 << TRIGGER_BITS) - 1)
 
 // The two jtag commands

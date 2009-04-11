@@ -35,7 +35,7 @@ typedef struct result_t {
 static const uint32_t mask0 = BITS >= 32 ? 0xfffffff : (1 << BITS) - 1;
 static const uint32_t mask1 = BITS >= 32
     ? BITS >= 64 ? 0xfffffff : (1 << (BITS - 32)) - 1 : 0;
-static const uint32_t mask2 = BITS >= 64 ? (1 << (BITS - 64)) - 1 : 0;
+static const uint32_t mask2 = BITS >= 64 ? BITS >= 96 ? 0xffffffff : (1 << (BITS - 64)) - 1 : 0;
 
 
 // The last result recorded on each channel.
