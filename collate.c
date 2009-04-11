@@ -154,8 +154,8 @@ static void finish_sync (result_t * MA, result_t * MB)
 static void * finish_thread_func (void * p)
 {
     result_t ** items = p;
-    result_t * A = items[1];
-    result_t * B = items[2];
+    result_t * A = items[0];
+    result_t * B = items[1];
     free (items);
     finish_sync (A, B);
     return NULL;
@@ -164,7 +164,6 @@ static void * finish_thread_func (void * p)
 
 static void finish_async (result_t * A, result_t * B)
 {
-    printf ("\n");
     result_t ** items = malloc (2 * sizeof (result_t *));
     if (items == NULL)
         printf_exit ("Out of memory processing hit\n");
@@ -508,7 +507,7 @@ int main (int argc, const char * const argv[])
     setvbuf (stdout, NULL, _IOLBF, 0);
     setvbuf (datafile, NULL, _IOLBF, 0);
 
-    printf ("ID Code is %08x\n", read_id());
+    printf ("\nID Code is %08x\n", read_id());
 
     int index[PIPELINES];
     uint64_t clock[PIPELINES];
