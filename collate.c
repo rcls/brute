@@ -216,7 +216,8 @@ static void add_result (result_t * result, bool for_real)
             'A' + r->pipe, channel / PIPELINES,
             r->channel_prev ? "" : " init");
 
-    fflush (NULL);
+    if (for_real)
+        fflush (NULL);
 
     if (r->channel_prev == NULL)
         return;
@@ -335,6 +336,32 @@ static void read_log_error (void)
 }
 
 
+static void read_session (void)
+{
+    time_t t;
+    int stages;
+    int pipelines;
+    if (fscanf (datafile, " %lu %u %u ", &t, &stages, &pipelines) != 3) {
+        fprintf (stderr, "Bogus S line in log file\n");
+        return;
+    }
+
+    char tt[30] = "";
+    ctime_r (&t, tt);
+
+    if (stages != STAGES)
+        printf_exit ("Session %s stage mismatch %u != %u\n",
+                     tt, stages, STAGES);
+
+    if (pipelines != PIPELINES)
+        printf_exit ("Session %s pipeline mismatch %u != %u\n",
+                     tt, pipelines, PIPELINES);
+
+    printf ("Session %s, stages %u, pipelines %u" WIPE "\n",
+            tt, stages, pipelines);
+}
+
+
 static void read_log_file (void)
 {
     while (true) {
@@ -349,6 +376,8 @@ static void read_log_file (void)
         case 'E':
             read_log_error();
             break;
+        case 'S':
+            read_session();
         case EOF:
             return;
         default:
@@ -467,6 +496,8 @@ int main (int argc, const char * const argv[])
 
     open_serial();
     jtag_reset();
+
+    fprintf (datafile, "S %lu %u %u\n", time (NULL), STAGES, PIPELINES);
 
     // Wipe out channel lasts, just to make sure we don't create false
     // channel_prev links.
