@@ -131,13 +131,6 @@ architecture Behavioral of md5 is
     end if;
   end;
 
-  -- Should a round use a DSP?  Take up 21 DSP pairs per pipeline.
-  function use_dsp (n : integer) return boolean is
-    variable idx : integer := index (n);
-  begin
-    return idx mod 16 >= 8 and idx mod 16 <= 12;
-  end;
-
   signal A : dataset_t (0 to 64);
   signal B : dataset_t (0 to 64);
   signal C : dataset_t (0 to 64);
@@ -178,10 +171,9 @@ architecture Behavioral of md5 is
     port (clk: in std_logic; D: in word_t; Q: out word_t);
   end component;
 
-  -- Compute (OneA + OneB) + Two using DSPs.  We do this for rounds 6 to 10
-  -- of each stage.
-  component adder3 is
-    port (addend2 : in word_t; addend4 : in word_t; addend5 : in word_t;
+  -- DSP based 32 bit adder with latencies of 1 and 3 cycles on the inputs.
+  component adder2 is
+    port (addend1 : in word_t; addend3 : in word_t;
           Sum : out word_t; Clk : std_logic);
   end component;
 
@@ -256,31 +248,40 @@ begin
         if Clk'event and Clk = '1' then
           sum1(i) <= func(i) + kk(i);
           sum2(i) <= yy(index(i)) + A(i);
-          sum(i) <= sum1(i) + sum2(i);
+          sum(i) <= rotl (sum1(i) + sum2(i), S(i));
         end if;
       end process;
     end generate;
-    dsp_round: if use_dsp (i) generate
-      add : adder3
-        port map (
-          addend2=> func(i),
-          addend4=> kk(i), -- yy(i) is zero, kk(i) is constant.
-          addend5=> D(i-1), -- A(i) one round prior.
-          Sum => sum(i),
-          Clk => Clk);
-    end generate;
-    by_hand_round: if index (i) mod 16 >= 6 and not use_dsp(i) generate
+    const_round: if index (i) mod 16 >= 6 generate
       process (Clk)
       begin
         if Clk'event and Clk = '1' then
           sum1(i) <= A(i); -- another cycle of delay.
           sum2(i) <= func(i) + (yy(index(i)) + kk(i));
-          sum(i) <= sum1(i) + sum2(i);
+          sum(i) <= rotl (sum1(i) + sum2(i), S(i));
         end if;
       end process;
     end generate;
   end generate;
 
+  -- The output sums.  Either use a DSP or a by hand adder; doesn't matter
+  -- which ones, subject to the limit of 27 DSPs per channel.
+  out_sum: for i in 0 to 63 generate
+    dsp_round: if (i * 40) mod 64 < 40 generate
+      add : adder2 port map (
+        addend3=>B(i), addend1=>sum(i), Clk=>Clk, Sum=> B(i+1));
+    end generate;
+    hand_round: if (i * 40) mod 64 >= 40 generate
+      process (Clk)
+      begin
+        if Clk'event and Clk = '1' then
+          -- round output.
+          B(i+1) <= sum(i) + Bb(i);
+        end if;
+      end process;
+    end generate;
+  end generate;
+  
   process (Clk)
     variable func : word_t;
   begin
@@ -304,8 +305,6 @@ begin
         A(i+1) <= Db(i);
         C(i+1) <= Bb(i);
         D(i+1) <= Cb(i);
-        -- round output.
-        B(i+1) <= rotl (sum(i), S(i)) + Bb(i);
       end loop;
     end if;
   end process;
