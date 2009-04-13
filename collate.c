@@ -377,6 +377,7 @@ static void read_log_file (void)
             break;
         case 'S':
             read_session();
+            break;
         case EOF:
             return;
         default:
