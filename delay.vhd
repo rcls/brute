@@ -20,20 +20,18 @@ end delay;
 
 architecture Behavioral of delay is
 
-  constant limit : integer := N - 3;
+  constant limit : integer := N - 2;
 
   signal count : integer range 0 to limit := 0;
 
   signal mem : dataset_t (limit downto 0);
-  signal reg : word_t;
   attribute ram_style : string;
   attribute ram_style of mem : signal is "block";
 begin
   process (Clk)
   begin
     if Clk'event and Clk = '1' then
-      reg <= mem (count);
-      Q <= reg;
+      Q <= mem (count);
       mem (count) <= D;
 
       if count = limit then

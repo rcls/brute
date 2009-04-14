@@ -187,13 +187,6 @@ architecture Behavioral of md5 is
 
 begin
 
-  A(0) <= iA;
-  B(0) <= iB;
-  C(0) <= iC;
-  D(0) <= iD;
-
-  bmon <= B;
-
   -- The actual outputs; we register these as adder->logic->ram is a bottleneck.
   process (Clk)
   begin
@@ -247,38 +240,36 @@ begin
   end generate;
 
   -- The round sums.  For each round we generate sum(i) as
-  -- func(i)+yy(index(i))+kk(i)+a(i) with a two cycle latency.  The strategy
+  -- func(i)+yy(index(i))+kk(i)+a(i).  The strategy
   -- depends on index(i).
   round_sum: for i in 0 to 63 generate
     data_round: if index (i) mod 16 < 6 generate
-      process (Clk) -- Only kk is constant.
-      begin
-        if Clk'event and Clk = '1' then
-          sum1(i) <= func(i) + kk(i);
-          sum2(i) <= yy(index(i)) + A(i);
-          sum(i) <= sum1(i) + sum2(i);
-        end if;
-      end process;
+      -- Only kk is constant.
+      sum1(i) <= func(i) + kk(i); -- Folds into function.
+      sum2(i) <= yy(index(i)) + A(i);
     end generate;
-    dsp_round: if use_dsp (i) generate
-      add : adder3
-        port map (
-          addend2=> func(i),
-          addend4=> kk(i), -- yy(i) is zero, kk(i) is constant.
-          addend5=> D(i-1), -- A(i) one round prior.
-          Sum => sum(i),
-          Clk => Clk);
+    by_hand_round: if index (i) mod 16 >= 6 generate
+      sum1(i) <= A(i);
+      sum2(i) <= func(i) + (yy(index(i)) + kk(i)); -- paren term is constant.
     end generate;
-    by_hand_round: if index (i) mod 16 >= 6 and not use_dsp(i) generate
-      process (Clk)
-      begin
-        if Clk'event and Clk = '1' then
-          sum1(i) <= A(i); -- another cycle of delay.
-          sum2(i) <= func(i) + (yy(index(i)) + kk(i));
-          sum(i) <= sum1(i) + sum2(i);
-        end if;
-      end process;
-    end generate;
+    sum(i) <= rotl (sum1(i) + sum2(i), S(i));
+  end generate;
+
+  -- The round output sums.   44 using hand adders, 20 using DSP.
+  round_hand: for i in 0 to 43 generate
+    process (Clk)
+    begin
+      if Clk'event and Clk = '1' then
+        B(i * 5 mod 64 + 1) <= sum (i * 5 mod 64) + A (i * 5 mod 64);
+      end if;
+    end process;
+  end generate;
+  round_dsp: for i in 44 to 63 generate
+    round_dsp_add: entity adder2 port map (
+      addend1 => sum(i * 5 mod 64),
+      addend2 => D(i * 5 mod 64 - 1),
+      sum => B(i * 5 mod 64 + 1),
+      Clk => Clk);
   end generate;
 
   process (Clk)
@@ -294,18 +285,10 @@ begin
       D(0) <= iD;
 
       -- Propagations.
-      Ba <= B(0 to 63);
-      Ca <= C(0 to 63);
-      Da <= D(0 to 63);
-      Bb <= Ba;
-      Cb <= Ca;
-      Db <= Da;
       for i in 0 to 63 loop
-        A(i+1) <= Db(i);
-        C(i+1) <= Bb(i);
-        D(i+1) <= Cb(i);
-        -- round output.
-        B(i+1) <= rotl (sum(i), S(i)) + Bb(i);
+        A(i+1) <= D(i);
+        C(i+1) <= B(i);
+        D(i+1) <= C(i);
       end loop;
     end if;
   end process;
