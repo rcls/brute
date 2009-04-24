@@ -16,6 +16,8 @@ collate: jtag-io.o -lcrypto -lpthread
 brute: -lpthread
 #brute LIBS = -lcrypto
 
+collate-check: jtag-io.o -lcrypto -lpthread
+
 %.s: %.c
 	$(COMPILE) -S -o $@ $<
 

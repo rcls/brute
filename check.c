@@ -12,7 +12,7 @@ void check (int pipeline)
     printf ("Check pipeline %c\n", pipeline ? 'A' : 'B');
     printf ("ID Code is %08x\n", read_id());
 
-    uint64_t clock1 = read_clock();
+    uint64_t clock1 = start_clock();
     uint64_t load_clock = clock1 + FREQ / 20;
     load_md5 (pipeline, load_clock, 0x01234567, 0x78abcdef, 0xfc9639da);
     usleep (100000);
