@@ -28,8 +28,8 @@ enum {
 // JTAG port bits.
 enum {
     MASK_TDI = 1,
-    MASK_TCK = 2,
-    MASK_TMS = 4,
+    MASK_TMS = 2,
+    MASK_SAMPLE = 4,
 };
 
 
@@ -128,10 +128,9 @@ static void read_data (unsigned char * buf, size_t len)
 }
 
 
-static unsigned char * append_tms (unsigned char * p, bool bit)
+static inline unsigned char * append_tms (unsigned char * p, bool bit)
 {
     *p++ = '0' + MASK_TMS * !!bit;
-    *p++ = '0' + MASK_TMS * !!bit + MASK_TCK;
     return p;
 }
 
@@ -143,8 +142,7 @@ static unsigned char * append_nq (unsigned char * p,
         p[0] = '0' + (data & 1) * MASK_TDI;
         if (last && i == bits)
             p[0] |= MASK_TMS;
-        p[1] = p[0] + MASK_TCK;
-        p += 2;
+        ++p;
         data >>= 1;
     }
     return p;
@@ -170,9 +168,9 @@ static uint64_t parse_bits (unsigned char * p, int num)
     uint64_t result = 0;
     for (int i = num; i != 0; ) {
         --i;
-        if (p[i] == 'i')
+        if (p[i] == '!')
             result = result * 2 + 1;
-        else if (p[i] == 'o')
+        else if (p[i] == ' ')
             result = result * 2;
         else
             printf_exit ("Illegal recved char %02x\n", p[i]);
@@ -192,12 +190,10 @@ static void write_read (unsigned char * buf,
     p = append_tms (p, 0);              // shift-dr.
 
     for (int i = 1; i <= count; ++i) {
-        p[0] = '0';
+        p[0] = '0' + MASK_SAMPLE;
         if (i == count)
             p[0] |= MASK_TMS;
-        p[1] = '\n';
-        p[2] = p[0] + MASK_TCK;
-        p += 3;
+        ++p;
     }
 
     p = append_tms (p, 1);                   // update-ir.
@@ -337,12 +333,10 @@ uint32_t read_id (void)
     p = append_tms (p, 0);              // shift-dr.
 
     for (int i = 1; i <= 32; ++i) {
-        p[0] = '0';
+        p[0] = '0' + MASK_SAMPLE;
         if (i == 32)
             p[0] |= MASK_TMS;
-        p[1] = '\n';
-        p[2] = p[0] + MASK_TCK;
-        p += 3;
+        ++p;
     }
 
     p = append_tms (p, 1);                   // update-ir.

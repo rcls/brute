@@ -9,7 +9,7 @@
 
 void check (int pipeline)
 {
-    printf ("Check pipeline %c\n", pipeline ? 'A' : 'B');
+    printf ("Check pipeline %c\n", pipeline + 'A');
     printf ("ID Code is %08x\n", read_id());
 
     uint64_t clock1 = start_clock();

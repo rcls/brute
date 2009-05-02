@@ -92,7 +92,7 @@ static void finish_sync (result_t * MA, result_t * MB)
     for (uint64_t i = gapB; i < gapA; ++i)
         transform (CA.data, CA.data);
 
-    printf ("Window size is %lu\n", window);
+    printf ("\nWindow size is %lu\n", window);
 
     for (uint64_t i = 0; i < window; ++i) {
         uint32_t NA[3];
@@ -211,7 +211,7 @@ static void add_result (result_t * result, bool for_real)
 
     printf ("\r%.2f%% %u %lu %08x %08x %08x %c[%3u]%s" WIPE,
             100 * cycle_count / total, result_count,
-            r->clock, r->data[0], r->data[1], r->data[2],
+            cycle_count, r->data[0], r->data[1], r->data[2],
             'A' + r->pipe, channel / PIPELINES,
             r->channel_prev ? "" : " init");
 
@@ -490,6 +490,9 @@ int main (int argc, const char * const argv[])
     datafile = fopen (argv[1], "a+");
     if (datafile == NULL)
         printf_exit ("open %s: %s\n", argv[1], strerror (errno));
+
+    // Buffer stdout while we're reading in the log file.
+    setvbuf (stdout, NULL, _IOFBF, 0);
 
     read_log_file();
     catch_up_hits();
