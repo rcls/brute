@@ -213,7 +213,7 @@ static void add_result (result_t * result, bool for_real)
             100 * cycle_count / total, result_count,
             cycle_count, r->data[0], r->data[1], r->data[2],
             'A' + r->pipe, channel / PIPELINES,
-            r->channel_prev ? "" : " init");
+            r->channel_prev ? "" : " i");
 
     if (for_real)
         fflush (NULL);

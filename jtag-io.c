@@ -81,13 +81,13 @@ static uint64_t adjust_clock (uint64_t c)
         printf_exit ("Clock jumps by too much (%lu -> %lu)\n",
                      clock_last & mask48, c & mask48);
 
-    if (o_minus <= o) {
-        c = c_minus;
-        printf ("Clock slips back [now at %lu 48-bit wraps]\n", c >> 48);
-    }
-    else if (o_plus <= 0) {
+    if (o_plus <= o) {
         c = c_plus;
-        printf ("Clock wraps [now at %lu 48-bit wraps]\n", c >> 48);
+        printf ("\nClock wraps [now at %lu 48-bit wraps]\n", c >> 48);
+    }
+    else if (o_minus <= o) {
+        c = c_minus;
+        printf ("\nClock slips back [now at %lu 48-bit wraps]\n", c >> 48);
     }
 
     clock_last = c;;
