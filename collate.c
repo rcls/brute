@@ -200,23 +200,22 @@ static void add_result (result_t * result, bool for_real)
     }
     channel_last[channel] = r;
 
-    if (for_real)
+    if (for_real) {
         fprintf (datafile, "R %lu %u %x %x %x\n",
                  r->clock, r->pipe, r->data[0], r->data[1], r->data[2]);
 
-    // Calculate approximate done percentage.
-    double total = 1ul << (BITS / 2);
-    if (BITS & 1)
-        total *= M_SQRT2;
+        // Calculate approximate done percentage.
+        double total = 1ul << (BITS / 2);
+        if (BITS & 1)
+            total *= M_SQRT2;
 
-    printf ("\r%.2f%% %u %lu %08x %08x %08x %c[%3u]%s" WIPE,
-            100 * cycle_count / total, result_count,
-            cycle_count, r->data[0], r->data[1], r->data[2],
-            'A' + r->pipe, channel / PIPELINES,
-            r->channel_prev ? "" : " i");
-
-    if (for_real)
+        printf ("\r%.2f%% %u %lu %08x %08x %08x %c[%3u]%s" WIPE,
+                100 * cycle_count / total, result_count,
+                cycle_count, r->data[0], r->data[1], r->data[2],
+                'A' + r->pipe, channel / PIPELINES,
+                r->channel_prev ? "" : " i");
         fflush (NULL);
+    }
 
     if (r->channel_prev == NULL)
         return;
@@ -505,7 +504,7 @@ int main (int argc, const char * const argv[])
     // Wipe out channel lasts, just to make sure we don't create false
     // channel_prev links.
     memset (channel_last, 0, sizeof (channel_last));
-    channels_seeded = 0;
+    channels_seeded = false;
 
     // Line buffer all output.
     setvbuf (stdout, NULL, _IOLBF, 0);

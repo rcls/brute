@@ -14,7 +14,7 @@
 #define LAST_NIBBLE_MASK (15 >> (3 & -BITS))
 
 #define TRIGGER_BITS 30
-#define TRIGGER_MASK (TRIGGER_BITS == 32 ? 0xfffffff : (1 << TRIGGER_BITS) - 1)
+#define TRIGGER_MASK (TRIGGER_BITS == 32 ? 0xffffffff : (1 << TRIGGER_BITS) - 1)
 
 // The two jtag commands
 enum {
