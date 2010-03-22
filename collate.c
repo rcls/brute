@@ -345,7 +345,8 @@ static void read_session (void)
     }
 
     char tt[30] = "";
-    ctime_r (&t, tt);
+    if (strftime (tt, 30, "%c", localtime (&t)) == 0)
+        tt[0] = 0;
 
     if (stages != STAGES)
         printf_exit ("Session %s stage mismatch %u != %u\n",
@@ -355,7 +356,7 @@ static void read_session (void)
         printf_exit ("Session %s pipeline mismatch %u != %u\n",
                      tt, pipelines, PIPELINES);
 
-    printf ("\r" WIPE "Reading session started %s" "Stages %u, pipelines %u\n",
+    printf ("\rReading session started %s" WIPE "\nStages %u, pipelines %u\n",
             tt, stages, pipelines);
 }
 

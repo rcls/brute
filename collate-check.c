@@ -492,14 +492,14 @@ static void read_log_result()
 static void read_log_hit()
 {
 #define H3 "%*x %*x %*x "
-    if (scanf (" %*u %*u %*u %*u %*u " H3 H3 H3 H3) != 17)
+    if (scanf (" %*u %*u %*u %*u %*u " H3 H3 H3 H3) != 0)
         fprintf (stderr, "Bogus H line in log file\n");
 }
 
 
 static void read_log_error (void)
 {
-    if (scanf (" %*u %*u %*u %*u %*x %*x %*x %*x %*x %*x ") != 10)
+    if (scanf (" %*u %*u %*u %*u %*x %*x %*x %*x %*x %*x ") != 0)
         fprintf (stderr, "Bogus E line in log file\n");
 }
 
@@ -515,7 +515,8 @@ static void read_session (void)
     }
 
     char tt[30] = "";
-    ctime_r (&t, tt);
+    if (strftime (tt, 30, "%c", localtime (&t)) == 0)
+        tt[0] = 0;
 
     bool started = false;
     for (int i = 0; i != PIPELINES * STAGES; ++i) {
@@ -538,7 +539,7 @@ static void read_session (void)
         printf_exit ("Session %s pipeline mismatch %u != %u\n",
                      tt, pipelines, PIPELINES);
 
-    printf ("Reading session started %s" "Stages %u, pipelines %u\n",
+    printf ("Reading session started %s\n" "Stages %u, pipelines %u\n",
             tt, stages, pipelines);
 
     memset (current, 0, sizeof (current));
@@ -578,6 +579,8 @@ static void * check_thread (void * unused)
     const result_t * checking[4] = { NULL, NULL, NULL, NULL };
     uint64_t remain[4] = { 0, 0, 0, 0 };
     uint64_t iterations = 0;
+    time_t start = time (NULL);
+    uint64_t total = 0;
     while (true) {
         for (int i = 0; i != 4; ++i) {
             const result_t * r = checking[i];
@@ -619,6 +622,11 @@ static void * check_thread (void * unused)
                 iterations = remain[i];
 
         iterate_MD5 (vv, iterations);
+
+        total += iterations;
+        time_t elapsed = time (NULL) - start;
+        printf ("Iterations: %lu, seconds %lu, per-sec %lu\n",
+                total, elapsed, total / elapsed);
     }
     return NULL;
 }
@@ -632,6 +640,8 @@ int main (int argc, char ** argv)
     setvbuf (stdout, NULL, _IOLBF, 0);
 
     pthread_t t;
+    pthread_create (&t, NULL, check_thread, NULL);
+    pthread_create (&t, NULL, check_thread, NULL);
     pthread_create (&t, NULL, check_thread, NULL);
     check_thread (NULL);
 }
