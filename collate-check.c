@@ -18,9 +18,6 @@
 
 #include "jtag-io.h"
 
-#define PIPELINES 2
-#define STAGES 195
-
 /* When we say inline we mean it --- we're relying heavily on constant
  * folding functions such as word() below.  */
 #define INLINE __attribute__ ((always_inline))
@@ -462,6 +459,8 @@ typedef struct result_t {
 static const result_t * current[PIPELINES * STAGES];
 static const result_t ** results = NULL;
 static size_t result_count = 0;
+static uint64_t cycles = 0;
+static uint64_t session_start_cycles = 0;
 
 static void read_log_result()
 {
@@ -485,6 +484,7 @@ static void read_log_result()
         if (results == NULL)
             printf_exit ("Out of memory (result array)\n");
         results[result_count - 1] = r;
+        cycles += (r->clock - r->channel_prev->clock) / STAGES;
     }
 }
 
@@ -506,6 +506,10 @@ static void read_log_error (void)
 
 static void read_session (void)
 {
+    if (cycles != 0)
+        printf ("Session approx %lu seconds\n",
+                (cycles - session_start_cycles) / (PIPELINES * FREQ));
+
     time_t t;
     int stages;
     int pipelines;
@@ -541,6 +545,8 @@ static void read_session (void)
 
     printf ("Reading session started %s\n" "Stages %u, pipelines %u\n",
             tt, stages, pipelines);
+
+    session_start_cycles = cycles;
 
     memset (current, 0, sizeof (current));
 }
@@ -636,8 +642,16 @@ int main (int argc, char ** argv)
 {
     read_log_file();
 
+    if (cycles != 0) {
+        printf ("Session approx %lu seconds\n",
+                (cycles - session_start_cycles) / (PIPELINES * FREQ));
+        printf ("Total approx %lu seconds\n", cycles / (PIPELINES * FREQ));
+    }
+
     // Line buffer all output.
     setvbuf (stdout, NULL, _IOLBF, 0);
+
+    return 0;
 
     pthread_t t;
     pthread_create (&t, NULL, check_thread, NULL);

@@ -1,9 +1,9 @@
 
-CFLAGS=-O2 -flax-vector-conversions -msse -msse2 -march=athlon64 -mtune=athlon64 -Wall -Winline -Werror -std=gnu99 -MMD -MP -MF.deps/$(subst /,:,$@).d
+CFLAGS=-O3 -flax-vector-conversions -msse -msse2 -march=native -mtune=native -Wall -Winline -Werror -std=gnu99 -MMD -MP -MF.deps/$(subst /,:,$@).d
 
-vpath %.so /usr/lib64 
+vpath %.so /usr/lib64
 
-all: md5log check collate brute
+all: md5log check collate collate-check
 
 md5log: -lm
 
@@ -19,7 +19,7 @@ brute: -lpthread
 collate-check: jtag-io.o -lcrypto -lpthread
 
 %.s: %.c
-	$(COMPILE) -S -o $@ $<
+	$(COMPILE.c) -S -o $@ $<
 
 brute3.c: brute.c
 	cp brute.c brute3.c
@@ -39,4 +39,4 @@ clean:
 
 -include .deps/*.d
 
-%: %.o
+%: %.c
