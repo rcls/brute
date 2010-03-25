@@ -356,8 +356,7 @@ static void read_session (void)
         printf_exit ("Session %s pipeline mismatch %u != %u\n",
                      tt, pipelines, PIPELINES);
 
-    printf ("\rReading session started %s" WIPE "\nStages %u, pipelines %u\n",
-            tt, stages, pipelines);
+    printf ("Reading session started %s.\n", tt);
 }
 
 

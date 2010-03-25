@@ -543,8 +543,7 @@ static void read_session (void)
         printf_exit ("Session %s pipeline mismatch %u != %u\n",
                      tt, pipelines, PIPELINES);
 
-    printf ("Reading session started %s\n" "Stages %u, pipelines %u\n",
-            tt, stages, pipelines);
+    printf ("Reading session started %s.\n", tt);
 
     session_start_cycles = cycles;
 
