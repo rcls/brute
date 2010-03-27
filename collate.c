@@ -20,7 +20,7 @@ static FILE * datafile;
 typedef struct result_t {
     uint64_t clock;
     uint32_t data[3];
-    int pipe;
+    unsigned int pipe;
     struct result_t * hash_next;
     const struct result_t * channel_prev;
 } result_t;
@@ -40,6 +40,8 @@ static const uint32_t mask2 = BITS >= 64 ? BITS >= 96 ? 0xffffffff : (1 << (BITS
 
 // The last result recorded on each channel.
 static result_t * channel_last[STAGES * PIPELINES];
+// The last result from each pipeline.
+static result_t * pipe_last[PIPELINES];
 static bool channels_seeded;
 
 // Hash table of results.
@@ -79,13 +81,13 @@ static void finish_sync (result_t * MA, result_t * MB)
     uint64_t gapB = (MB->clock - MB->channel_prev->clock) / STAGES;
     uint64_t window;
 
-    if (gapA < gapB) {
-        window = gapA;
-        printf ("Fast forward first by %lu\n", gapB - gapA);
+    if (gapA > gapB) {
+        window = gapB;
+        printf ("Fast forward first by %lu\n", gapA - gapB);
     }
     else {
-        window = gapB;
-        printf ("Fast forward second by %lu\n", gapA - gapB);
+        window = gapA;
+        printf ("Fast forward second by %lu\n", gapB - gapA);
     }
     for (uint64_t i = gapA; i < gapB; ++i)
         transform (CB.data, CB.data);
@@ -106,7 +108,7 @@ static void finish_sync (result_t * MA, result_t * MB)
                      CA.data[0], CA.data[1], CA.data[2], NA[0], NA[1], NA[2],
                      CB.data[0], CB.data[1], CB.data[2], NB[0], NB[1], NB[2]);
 
-            printf ("\rHit %lu[%lu]%c %lu[%lu]%c, delta %lu " WIPE "\n"
+            printf ("\rHit %lu[%lu]%c %lu[%lu]%c, delta %lu" WIPE "\n"
                     "%08x %08x %08x -> %08x %08x %08x\n"
                     "%08x %08x %08x -> %08x %08x %08x\n",
             CA.clock, CA.clock % STAGES, 'A' + CA.pipe,
@@ -198,6 +200,7 @@ static void add_result (result_t * result, bool for_real)
         cycle_count += (r->clock - r->channel_prev->clock) / STAGES;
         ++result_count;
     }
+    pipe_last[result->pipe] = r;
     channel_last[channel] = r;
 
     if (for_real) {
@@ -224,8 +227,9 @@ static void add_result (result_t * result, bool for_real)
     result_t ** bucket = &hash[r->data[1] % HASH_SIZE];
     // Check for all bits of agreement.
     for ( ; *bucket; bucket = &(*bucket)->hash_next)
-        if (for_real && match (r->data, (*bucket)->data)) {
-            finish_async (r, *bucket);
+        if (match (r->data, (*bucket)->data)) {
+            if (for_real)
+                finish_async (r, *bucket);
             // Force reseeding of the channel.
             channel_last[channel] = NULL;
             channels_seeded = false;
@@ -237,7 +241,6 @@ static void add_result (result_t * result, bool for_real)
 
 static void read_log_result (void)
 {
-    // FIXME - record in log chain.
     result_t r;
     if (fscanf (datafile, " %lu %u %x %x %x ",
                 &r.clock, &r.pipe, &r.data[0], &r.data[1], &r.data[2])
@@ -254,8 +257,8 @@ static void read_log_result (void)
 typedef struct logged_hit_t {
     uint64_t clockA;
     uint64_t clockB;
-    int pipeA;
-    int pipeB;
+    unsigned int pipeA;
+    unsigned int pipeB;
 } logged_hit_t;
 
 
@@ -272,7 +275,7 @@ static void add_logged_hit (const result_t * A, const result_t * B)
     }
 
     logged_hit_list = realloc (logged_hit_list,
-                             sizeof (logged_hit_t) * (logged_hit_count + 1));
+                               sizeof (logged_hit_t) * (logged_hit_count + 1));
     if (logged_hit_list == NULL)
         printf_exit ("Out of memory with %zu read hits\n", logged_hit_count);
     logged_hit_list[logged_hit_count].clockA = A->clock;
@@ -357,6 +360,11 @@ static void read_session (void)
                      tt, pipelines, PIPELINES);
 
     printf ("Reading session started %s.\n", tt);
+
+    // Wipe out channel lasts, just to make sure we don't create false
+    // channel_prev links.  This should only be necessary in the case
+    // where we restart a session that did not completely seed.
+    memset (channel_last, 0, sizeof (channel_last));
 }
 
 
@@ -481,6 +489,44 @@ static void seed (void)
 }
 
 
+static uint64_t resync_buffers (int index[PIPELINES], uint64_t clock[PIPELINES])
+{
+    uint64_t iclk = 0;
+    for (int i = 0; i != PIPELINES; ++i) {
+        printf ("Resync pipeline %i", i);
+        const result_t * last = pipe_last[i];
+        if (last == NULL) {
+            printf (": no previous items.\n");
+            return 0;
+        }
+        printf (" clock %lu", last->clock);
+        for (int j = 0; j != 256; ++j) {
+            uint32_t data[3];
+            uint64_t c = read_result_raw (i, j, data);
+            int64_t diff = c - (last->clock & MASK48);
+            if (diff == 0
+                && data[0] == last->data[0]
+                && data[1] == last->data[1]
+                && data[2] == last->data[2]) {
+                printf (": success at %i.\n", j);
+                if (last->clock > iclk)
+                    iclk = last->clock;
+                clock[i] = last->clock;
+                index[i] = j + 1;
+                goto next;
+            }
+            if (diff < -1ul << 40 || diff > 1ul << 40)
+                break;
+        }
+        printf (": not found.\n");
+        return 0;
+    next:
+        ;
+    }
+    return iclk;
+}
+
+
 int main (int argc, const char * const argv[])
 {
     if (argc < 2 || argv[1][0] == '-')
@@ -499,11 +545,6 @@ int main (int argc, const char * const argv[])
     open_serial();
     jtag_reset();
 
-    fprintf (datafile, "S %lu %u %u\n", time (NULL), STAGES, PIPELINES);
-
-    // Wipe out channel lasts, just to make sure we don't create false
-    // channel_prev links.
-    memset (channel_last, 0, sizeof (channel_last));
     channels_seeded = false;
 
     // Line buffer all output.
@@ -515,11 +556,22 @@ int main (int argc, const char * const argv[])
     int index[PIPELINES];
     uint64_t clock[PIPELINES];
 
-    uint64_t iclk = start_clock();
+    // Attempt to resync...
+    uint64_t iclk = resync_buffers (index, clock);
 
-    for (int i = 0; i != PIPELINES; ++i) {
-        index[i] = 1;
-        clock[i] = 0;
+    // If that failed, then start a new session.
+    if (iclk == 0) {
+        iclk = start_clock();
+
+        fprintf (datafile, "S %lu %u %u\n", time (NULL), STAGES, PIPELINES);
+
+        // Wipe out channel lasts, just to make sure we don't create false
+        // channel_prev links.
+        memset (channel_last, 0, sizeof (channel_last));
+        for (int i = 0; i != PIPELINES; ++i) {
+            index[i] = 1;
+            clock[i] = 0;
+        }
     }
 
     while (true) {

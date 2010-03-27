@@ -64,9 +64,8 @@ static uint64_t clock_last;
 // while preserving the bottom 48 bits.
 static uint64_t adjust_clock (uint64_t c)
 {
-    static const uint64_t mask48 = (1ul << 48) - 1;
     // Apply the top bits of clock_last to c.
-    c = (c & mask48) | (clock_last & ~mask48);
+    c = (c & MASK48) | (clock_last & ~MASK48);
 
     // We select whichever of c, c +/- (1<<48) is closest to clock_last.  We
     // error if this jumps by more than 1<<32.
@@ -79,7 +78,7 @@ static uint64_t adjust_clock (uint64_t c)
 
     if (o >= (1ul << 46) && o_minus >= (1ul << 32) && o_plus >= (1ul << 46))
         printf_exit ("Clock jumps by too much (%lu -> %lu)\n",
-                     clock_last & mask48, c & mask48);
+                     clock_last & MASK48, c & MASK48);
 
     if (o_plus <= o) {
         c = c_plus;
@@ -258,6 +257,12 @@ void sample_md5 (int pipeline, uint64_t clock)
 void read_result (int pipeline,
                   int location, uint64_t * clock, uint32_t data[3])
 {
+    *clock = adjust_clock (read_result_raw (pipeline, location, data));
+}
+
+
+uint64_t read_result_raw (int pipeline, int location, uint32_t data[3])
+{
     unsigned char obuf[2048];
     unsigned char * p = obuf;
 
@@ -278,7 +283,7 @@ void read_result (int pipeline,
     data[0] = parse_bits (obuf, 32);
     data[1] = parse_bits (obuf + 32, 32);
     data[2] = parse_bits (obuf + 64, 32);
-    *clock = adjust_clock (parse_bits (obuf + 96, 48));
+    return parse_bits (obuf + 96, 48);
 }
 
 
@@ -319,6 +324,13 @@ uint64_t start_clock (void)
     printf ("Initial clock at %lu wraps\n", c >> 48);
     clock_last = c;
     return c;
+}
+
+
+void set_clock (uint64_t c)
+{
+    printf ("Initial clock at %lu wraps\n", c >> 48);
+    clock_last = c;
 }
 
 

@@ -12,6 +12,7 @@
 #define BITS 96
 #define NIBBLES ((BITS + 3) / 4)
 #define LAST_NIBBLE_MASK (15 >> (3 & -BITS))
+#define MASK48 ((1ul << 48) - 1)
 
 #define TRIGGER_BITS 30
 #define TRIGGER_MASK (TRIGGER_BITS == 32 ? 0xffffffff : (1 << TRIGGER_BITS) - 1)
@@ -31,6 +32,7 @@ void load_md5 (int pipeline,
 void sample_md5 (int pipeline, uint64_t clock);
 void read_result (int pipeline,
                   int location, uint64_t * clock, uint32_t data[3]);
+uint64_t read_result_raw (int pipeline, int location, uint32_t data[3]);
 uint64_t read_clock (void);
 uint32_t read_id (void);
 void jtag_reset (void);
