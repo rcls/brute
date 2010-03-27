@@ -504,11 +504,27 @@ static void read_log_error (void)
 }
 
 
+static void print_session_length (const char * tag, uint64_t sc)
+{
+    if (sc == 0)
+        return;
+
+    unsigned int secs = sc / (PIPELINES * FREQ);
+    printf ("%s approx %6u seconds (%u %02u:%02u:%02u.%06lu + %3lu)\n",
+            tag,
+            secs,
+            secs / 86400,
+            secs / 3600 % 24,
+            secs / 60 % 60,
+            secs % 60,
+            sc / (PIPELINES * FREQ / 1000000) % 1000000,
+            sc % (PIPELINES * FREQ / 1000000));
+}
+
+
 static void read_session (void)
 {
-    if (cycles != 0)
-        printf ("Session approx %lu seconds\n",
-                (cycles - session_start_cycles) / (PIPELINES * FREQ));
+    print_session_length ("Session", cycles - session_start_cycles);
 
     time_t t;
     int stages;
@@ -641,11 +657,8 @@ int main (int argc, char ** argv)
 {
     read_log_file();
 
-    if (cycles != 0) {
-        printf ("Session approx %lu seconds\n",
-                (cycles - session_start_cycles) / (PIPELINES * FREQ));
-        printf ("Total approx %lu seconds\n", cycles / (PIPELINES * FREQ));
-    }
+    print_session_length ("Session", cycles - session_start_cycles);
+    print_session_length ("Total", cycles);
 
     // Line buffer all output.
     setvbuf (stdout, NULL, _IOLBF, 0);
