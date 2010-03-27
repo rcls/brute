@@ -440,7 +440,7 @@ static void catch_up_hit (result_t * A, result_t * B)
     }
 
     // Not found, record it.
-    finish_sync (A, B);
+    finish_async (A, B);
 }
 
 
