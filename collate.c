@@ -509,14 +509,16 @@ static uint64_t resync_buffers (int index[PIPELINES], uint64_t clock[PIPELINES])
                 && data[1] == last->data[1]
                 && data[2] == last->data[2]) {
                 printf (": success at %i.\n", j);
-                if (last->clock > iclk)
+                if (iclk == 0 || last->clock < iclk)
                     iclk = last->clock;
                 clock[i] = last->clock;
                 index[i] = j + 1;
                 goto next;
             }
-            if (diff < -1ul << 40 || diff > 1ul << 40)
-                break;
+            if (diff < (-1ul << 40) || diff > (1ul << 40)) {
+                printf (": out of range.\n");
+                return 0;
+            }
         }
         printf (": not found.\n");
         return 0;
