@@ -536,9 +536,6 @@ int main (int argc, const char * const argv[])
     if (datafile == NULL)
         printf_exit ("open %s: %s\n", argv[1], strerror (errno));
 
-    // Buffer stdout while we're reading in the log file.
-    setvbuf (stdout, NULL, _IOFBF, 0);
-
     read_log_file();
     catch_up_hits();
 
