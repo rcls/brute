@@ -515,8 +515,9 @@ static uint64_t resync_buffers (int index[PIPELINES], uint64_t clock[PIPELINES])
                 index[i] = j + 1;
                 goto next;
             }
-            if (diff < (-1ul << 40) || diff > (1ul << 40)) {
-                printf (": out of range.\n");
+            if (diff < (-1600000000000) || diff > (1600000000000)) {
+                printf (": out of range (%lu %lu %ld).\n",
+                        c, last->clock, diff);
                 return 0;
             }
         }
@@ -560,6 +561,7 @@ int main (int argc, const char * const argv[])
 
     // If that failed, then start a new session.
     if (iclk == 0) {
+        return 0;
         iclk = start_clock();
 
         fprintf (datafile, "S %lu %u %u\n", time (NULL), STAGES, PIPELINES);
@@ -572,6 +574,8 @@ int main (int argc, const char * const argv[])
             clock[i] = 0;
         }
     }
+    else
+        set_clock (iclk);
 
     while (true) {
         bool got = false;

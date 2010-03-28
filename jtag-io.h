@@ -40,6 +40,7 @@ void open_serial (void);
 
 void external_clock (uint64_t c);
 uint64_t start_clock (void);
+void set_clock (uint64_t c);
 
 // Nothing to do with jtag...
 void transform (const uint32_t din[3], uint32_t dout[3]);
