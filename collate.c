@@ -499,23 +499,24 @@ static uint64_t resync_buffers (int index[PIPELINES], uint64_t clock[PIPELINES])
             printf (": no previous items.\n");
             return 0;
         }
+        if (iclk == 0 || last->clock < iclk)
+            iclk = last->clock;
         printf (" clock %lu", last->clock);
         for (int j = 0; j != 256; ++j) {
             uint32_t data[3];
             uint64_t c = read_result_raw (i, j, data);
-            int64_t diff = c - (last->clock & MASK48);
+            int64_t diff = c - last->clock;
+            diff = (diff << 16) >> 16;
             if (diff == 0
                 && data[0] == last->data[0]
                 && data[1] == last->data[1]
                 && data[2] == last->data[2]) {
                 printf (": success at %i.\n", j);
-                if (iclk == 0 || last->clock < iclk)
-                    iclk = last->clock;
                 clock[i] = last->clock;
                 index[i] = j + 1;
                 goto next;
             }
-            if (diff < (-1600000000000) || diff > (1600000000000)) {
+            if (diff < (-1l << 40) || diff > (1l << 40)) {
                 printf (": out of range (%lu %lu %ld).\n",
                         c, last->clock, diff);
                 return 0;
@@ -526,14 +527,21 @@ static uint64_t resync_buffers (int index[PIPELINES], uint64_t clock[PIPELINES])
     next:
         ;
     }
+    set_clock (iclk);
     return iclk;
 }
 
 
 int main (int argc, const char * const argv[])
 {
-    if (argc < 2 || argv[1][0] == '-')
-        printf_exit ("Usage: %s <log file>\n", argv[0]);
+    int indf = 1;
+    bool new = false;
+    if (argc > indf && strcmp (argv[indf], "-n") == 0) {
+        new = true;
+        ++indf;
+    }
+    if (argc <= indf || argv[indf][0] == '-')
+        printf_exit ("Usage: %s [-n] <log file>\n", argv[0]);
 
     datafile = fopen (argv[1], "a+");
     if (datafile == NULL)
@@ -561,7 +569,9 @@ int main (int argc, const char * const argv[])
 
     // If that failed, then start a new session.
     if (iclk == 0) {
-        return 0;
+        if (!new)
+            return EXIT_FAILURE;
+
         iclk = start_clock();
 
         fprintf (datafile, "S %lu %u %u\n", time (NULL), STAGES, PIPELINES);
@@ -574,8 +584,6 @@ int main (int argc, const char * const argv[])
             clock[i] = 0;
         }
     }
-    else
-        set_clock (iclk);
 
     while (true) {
         bool got = false;
