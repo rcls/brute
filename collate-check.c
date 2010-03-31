@@ -510,7 +510,7 @@ static void print_session_length (const char * tag, uint64_t sc)
         return;
 
     unsigned int secs = sc / (PIPELINES * FREQ);
-    printf ("%s approx %6u seconds (%u %02u:%02u:%02u.%06lu + %3lu)\n",
+    printf ("%s %6u seconds (%u %02u:%02u:%02u.%06lu + %3lu)\n",
             tag,
             secs,
             secs / 86400,
@@ -612,8 +612,8 @@ static void * check_thread (void * unused)
             if (r == NULL)
                 ;
             else if (EXTRACT (vv[0], i) == checking[i]->data[0] &&
-                EXTRACT (vv[1], i) == checking[i]->data[1] &&
-                EXTRACT (vv[2], i) == checking[i]->data[2])
+                     EXTRACT (vv[1], i) == checking[i]->data[1] &&
+                     EXTRACT (vv[2], i) == checking[i]->data[2])
                 printf ("Verified %lu %c[%lu]\n",
                         r->clock, 'A' + r->pipe, r->clock % STAGES);
             else
@@ -638,7 +638,7 @@ static void * check_thread (void * unused)
         }
 
         iterations = ~ (uint64_t) 0;
-        for (int i = 1; i != 4; ++i)
+        for (int i = 0; i != 4; ++i)
             if (remain[i] < iterations)
                 iterations = remain[i];
 
@@ -663,7 +663,10 @@ int main (int argc, char ** argv)
     // Line buffer all output.
     setvbuf (stdout, NULL, _IOLBF, 0);
 
-    return 0;
+    if (argc <= 1)
+        return 0;
+
+    srandom (time (NULL));
 
     pthread_t t;
     pthread_create (&t, NULL, check_thread, NULL);
