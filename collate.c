@@ -543,7 +543,7 @@ int main (int argc, const char * const argv[])
     if (argc <= indf || argv[indf][0] == '-')
         printf_exit ("Usage: %s [-n] <log file>\n", argv[0]);
 
-    datafile = fopen (argv[1], "a+");
+    datafile = fopen (argv[indf], "a+");
     if (datafile == NULL)
         printf_exit ("open %s: %s\n", argv[1], strerror (errno));
 
