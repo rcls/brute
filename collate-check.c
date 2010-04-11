@@ -60,20 +60,12 @@ static inline value_t ANDN (value_t a, value_t b)
 #define LEFT(a,n) __builtin_ia32_pslldi128 (a, n)
 
 
-static uint32_t EXTRACT (value_t v, int index)
+static INLINE uint32_t EXTRACT (value_t v, int index)
 {
-    switch (index) {
-    case 0:
+    if (__builtin_constant_p (index) && index == 0)
         return FIRST (v);
-    case 1:
-        return FIRST (__builtin_ia32_pshufd (v, 0x55));
-    case 2:
-        return FIRST (__builtin_ia32_pshufd (v, 0xAA));
-    case 3:
-        return FIRST (__builtin_ia32_pshufd (v, 0xFF));
-    default:
-        abort();
-    }
+    else
+        return FIRST (__builtin_ia32_pshufd (v, index * 0x55));
 }
 
 
