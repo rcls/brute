@@ -471,7 +471,6 @@ static void read_log_result()
     r->channel_prev = current[slot];
     current[slot] = r;
     if (r->channel_prev != NULL) {
-        // FIXME - add to the result array.
         results = realloc (results, ++result_count * sizeof (result_t *));
         if (results == NULL)
             printf_exit ("Out of memory (result array)\n");
@@ -629,8 +628,8 @@ static void * check_thread (void * unused)
             vv[2] = INSERT (vv[2], i, r->channel_prev->data[2]);
         }
 
-        iterations = ~ (uint64_t) 0;
-        for (int i = 0; i != 4; ++i)
+        iterations = remain[0];
+        for (int i = 1; i != 4; ++i)
             if (remain[i] < iterations)
                 iterations = remain[i];
 

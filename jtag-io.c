@@ -68,7 +68,7 @@ static uint64_t adjust_clock (uint64_t c)
     c = (c & MASK48) | (clock_last & ~MASK48);
 
     // We select whichever of c, c +/- (1<<48) is closest to clock_last.  We
-    // error if this jumps by more than 1<<32.
+    // error if this jumps by more than 1<<40.
     uint64_t c_minus = c - (1ul << 48);
     uint64_t c_plus = c + (1ul << 48);
 
@@ -76,8 +76,8 @@ static uint64_t adjust_clock (uint64_t c)
     uint64_t o_minus = labs (c_minus - clock_last);
     uint64_t o_plus = labs (c_plus - clock_last);
 
-    if (o >= (1ul << 46) && o_minus >= (1ul << 32) && o_plus >= (1ul << 46))
-        printf_exit ("Clock jumps by too much (%lu -> %lu)\n",
+    if (o >= (1ul << 44) && o_minus >= (1ul << 44) && o_plus >= (1ul << 44))
+        printf_exit ("Clock jumps by too much (%lu -> %lu)\a\n",
                      clock_last & MASK48, c & MASK48);
 
     if (o_plus <= o) {
@@ -89,7 +89,7 @@ static uint64_t adjust_clock (uint64_t c)
         printf ("\nClock slips back [now at %lu 48-bit wraps]\n", c >> 48);
     }
 
-    clock_last = c;;
+    clock_last = c;
     return c;
 }
 

@@ -108,7 +108,7 @@ static void finish_sync (result_t * MA, result_t * MB)
                      CA.data[0], CA.data[1], CA.data[2], NA[0], NA[1], NA[2],
                      CB.data[0], CB.data[1], CB.data[2], NB[0], NB[1], NB[2]);
 
-            printf ("\rHit %lu[%lu]%c %lu[%lu]%c, delta %lu" WIPE "\n"
+            printf ("\r\aHit %lu[%lu]%c %lu[%lu]%c, delta %lu" WIPE "\n"
                     "%08x %08x %08x -> %08x %08x %08x\n"
                     "%08x %08x %08x -> %08x %08x %08x\n",
             CA.clock, CA.clock % STAGES, 'A' + CA.pipe,
