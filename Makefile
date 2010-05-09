@@ -1,5 +1,5 @@
 
-CFLAGS=-O3 -flax-vector-conversions -msse -msse2 -march=native -mtune=native -Wall -Winline -Werror -std=gnu99 -MMD -MP -MF.deps/$(subst /,:,$@).d
+CFLAGS=-O3 -g -flax-vector-conversions -msse -msse2 -march=native -mtune=native -Wall -Winline -Werror -std=gnu99 -MMD -MP -MF.deps/$(subst /,:,$@).d
 
 vpath %.so /usr/lib64
 
@@ -10,6 +10,8 @@ md5log: -lm
 check: jtag-io.o -lcrypto
 
 collate: jtag-io.o -lcrypto -lpthread
+
+bizarre: jtag-io.o -lcrypto
 
 #all: brute
 
