@@ -7,7 +7,8 @@
  * and static const variables - you may wanna check the assembly...
  */
 
-//#include <assert.h>
+#include <assert.h>
+#include <math.h>
 #include <pthread.h>
 #include <string.h>
 #include <stdbool.h>
@@ -64,8 +65,18 @@ static INLINE uint32_t EXTRACT (value_t v, int index)
 {
     if (__builtin_constant_p (index) && index == 0)
         return FIRST (v);
-    else
-        return FIRST (__builtin_ia32_pshufd (v, index * 0x55));
+
+    switch (index) {
+    case 0:
+        return FIRST (v);
+    case 1:
+        return FIRST (__builtin_ia32_pshufd (v, 0x55));
+    case 2:
+        return FIRST (__builtin_ia32_pshufd (v, 0xaa));
+    case 3:
+        return FIRST (__builtin_ia32_pshufd (v, 0xff));
+    }
+    abort();
 }
 
 
@@ -433,26 +444,39 @@ static void INLINE inline_MD5 (value_t * __restrict D0,
 }
 
 
-static void iterate_MD5 (value_t * __restrict v, unsigned long n)
+static uint64_t iterate_MD5 (value_t * __restrict v, uint64_t n)
 {
-    for ( ; n; --n)
+    uint64_t remain = n;
+    value_t check;
+    do {
         inline_MD5 (v, v + 1, v + 2);
+        check = AND (*v, DIAG (0x3fffffff));
+        --remain;
+    }
+    while (remain
+           && EXTRACT (check, 0)
+           && EXTRACT (check, 1)
+           && EXTRACT (check, 2)
+           && EXTRACT (check, 3));
+    return n - remain;
 }
 
 
 typedef struct result_t {
     uint64_t clock;
-    uint32_t data[3];
     int pipe;
     const struct result_t * channel_prev;
+    uint64_t gap;
+    uint32_t data[3];
 } result_t;
 
 
 static const result_t * current[PIPELINES * STAGES];
-static const result_t ** results = NULL;
+static result_t ** results = NULL;
 static size_t result_count = 0;
 static uint64_t cycles = 0;
 static uint64_t session_start_cycles = 0;
+static int global_result_index = 0;
 
 static void read_log_result()
 {
@@ -468,8 +492,12 @@ static void read_log_result()
     }
 
     int slot = r->pipe * STAGES + r->clock % STAGES;
-    r->channel_prev = current[slot];
+    if (r->data[0] & TRIGGER_MASK)
+        r->channel_prev = NULL;
+    else
+        r->channel_prev = current[slot];
     current[slot] = r;
+
     if (r->channel_prev != NULL) {
         results = realloc (results, ++result_count * sizeof (result_t *));
         if (results == NULL)
@@ -584,6 +612,48 @@ static void read_log_file (void)
     }
 }
 
+static uint64_t gapof (const result_t * r)
+{
+    return (r->clock - r->channel_prev->clock) / STAGES;
+}
+
+
+static const result_t * finish (value_t * __restrict vv,
+                                int i,
+                                uint64_t * __restrict remain,
+                                const result_t * r)
+{
+    if (r == NULL)
+        ;
+    else if (EXTRACT (vv[0], i) == r->data[0] &&
+             EXTRACT (vv[1], i) == r->data[1] &&
+             EXTRACT (vv[2], i) == r->data[2])
+        printf ("Verified %lu %c[%lu]\n",
+                r->clock, 'A' + r->pipe, r->clock % STAGES);
+    else
+        printf ("\aFAILED %lu %c[%lu] after %lu iterations\n"
+                "Got %08x %08x %08x\n"
+                "Exp %08x %08x %08x\n",
+                r->clock, 'A' + r->pipe, r->clock % STAGES,
+                gapof (r),
+                EXTRACT (vv[0], i), EXTRACT (vv[1], i),
+                EXTRACT (vv[2], i),
+                r->data[0], r->data[1], r->data[2]);
+
+    int index = __sync_add_and_fetch (&global_result_index, 1) - 1;
+    if (index >= result_count)
+        index = random() % result_count;
+
+    r = results[index];
+    vv[0] = INSERT (vv[0], i, r->channel_prev->data[0]);
+    vv[1] = INSERT (vv[1], i, r->channel_prev->data[1]);
+    vv[2] = INSERT (vv[2], i, r->channel_prev->data[2]);
+    *remain = gapof (r);
+    printf ("Start %lu %c[%lu], %lu iterations\n",
+            r->clock, 'A' + r->pipe, r->clock % STAGES,
+            *remain);
+    return r;
+}
 
 static void * check_thread (void * unused)
 {
@@ -597,35 +667,15 @@ static void * check_thread (void * unused)
         for (int i = 0; i != 4; ++i) {
             const result_t * r = checking[i];
             remain[i] -= iterations;
-            if (remain[i] != 0)
-                continue;
-
-            if (r == NULL)
-                ;
-            else if (EXTRACT (vv[0], i) == checking[i]->data[0] &&
-                     EXTRACT (vv[1], i) == checking[i]->data[1] &&
-                     EXTRACT (vv[2], i) == checking[i]->data[2])
-                printf ("Verified %lu %c[%lu]\n",
-                        r->clock, 'A' + r->pipe, r->clock % STAGES);
-            else
-                printf ("\aFAILED %lu %c[%lu] after %lu iterations\n"
-                        "Got %08x %08x %08x\n"
-                        "Exp %08x %08x %08x\n",
-                        r->clock, 'A' + r->pipe, r->clock % STAGES,
-                        r->clock - r->channel_prev->clock,
-                        EXTRACT (vv[0], i), EXTRACT (vv[1], i),
-                        EXTRACT (vv[2], i),
-                        r->data[0], r->data[1], r->data[2]);
-
-            r = results[random() % result_count];
-            checking[i] = r;
-            remain[i] = (r->clock - r->channel_prev->clock) / STAGES;
-            printf ("Start %lu %c[%lu], %lu iterations\n",
-                    r->clock, 'A' + r->pipe, r->clock % STAGES,
-                    remain[i]);
-            vv[0] = INSERT (vv[0], i, r->channel_prev->data[0]);
-            vv[1] = INSERT (vv[1], i, r->channel_prev->data[1]);
-            vv[2] = INSERT (vv[2], i, r->channel_prev->data[2]);
+            if (remain[i] == 0)
+                checking[i] = finish (vv, i, &remain[i], r);
+            else if ((EXTRACT (vv[0], i) & 0x3fffffff) == 0)
+                printf ("R %lu %i %8x %8x %8x\n",
+                        r->clock - STAGES * remain[i],
+                        r->pipe,
+                        EXTRACT (vv[0], i),
+                        EXTRACT (vv[1], i),
+                        EXTRACT (vv[2], i));
         }
 
         iterations = remain[0];
@@ -633,31 +683,151 @@ static void * check_thread (void * unused)
             if (remain[i] < iterations)
                 iterations = remain[i];
 
-        iterate_MD5 (vv, iterations);
-
+        iterations = iterate_MD5 (vv, iterations);
         total += iterations;
+
         time_t elapsed = time (NULL) - start;
-        printf ("Iterations: %lu, seconds %lu, per-sec %lu\n",
-                total, elapsed, total / elapsed);
+        fprintf (stderr, "Iterations: %lu, seconds %lu, per-sec %lu\n",
+                 total, elapsed, total / elapsed);
     }
     return NULL;
 }
 
 
+int clock_midpoint_order (const void * AA, const void * BB)
+{
+    const result_t * const * A = AA;
+    const result_t * const * B = BB;
+
+    uint64_t sA = (*A)->clock + (*A)->channel_prev->clock;
+    uint64_t sB = (*B)->clock + (*B)->channel_prev->clock;
+    if (sA < sB)
+        return -1;
+    if (sA > sB)
+        return 1;
+    return 0;
+}
+
+
+int prev_clock_order (const void * AA, const void * BB)
+{
+    const result_t * const * A = AA;
+    const result_t * const * B = BB;
+
+    uint64_t pA = (*A)->channel_prev->clock;
+    uint64_t pB = (*B)->channel_prev->clock;
+    if (pA < pB)
+        return -1;
+    if (pA > pB)
+        return 1;
+    return 0;
+}
+
+
+int clock_order (const void * AA, const void * BB)
+{
+    const result_t * const * A = AA;
+    const result_t * const * B = BB;
+
+    uint64_t cA = (*A)->clock;
+    uint64_t cB = (*B)->clock;
+    if (cA < cB)
+        return -1;
+    if (cA > cB)
+        return 1;
+    return 0;
+}
+
+
+int gap_order (const void * AA, const void * BB)
+{
+    const result_t * const * A = AA;
+    const result_t * const * B = BB;
+
+    uint64_t gA = (*A)->gap;
+    uint64_t gB = (*B)->gap;
+    if (gA < gB)
+        return 1;
+    if (gA > gB)
+        return -1;
+    return 0;
+}
+
+
+int biggest_gap_first (const void * AA, const void * BB)
+{
+    const result_t * const * A = AA;
+    const result_t * const * B = BB;
+    uint64_t gA = gapof (*A);
+    uint64_t gB = gapof (*B);
+    if (gA < gB)
+        return 1;
+    if (gA > gB)
+        return -1;
+    return 0;
+}
+
+
 int main (int argc, char ** argv)
 {
+    // Line buffer all output.
+    setvbuf (stdout, NULL, _IOLBF, 0);
+
     read_log_file();
 
     print_session_length ("Session", cycles - session_start_cycles);
     print_session_length ("Total", cycles);
+#if 0
+    result_t ** by_clock = malloc (result_count * sizeof (result_t *));
+    if (by_clock == NULL)
+        printf_exit ("Out of memory");
+    memcpy (by_clock, results, result_count * sizeof (result_t *));
+    qsort (by_clock, result_count, sizeof (result_t *), clock_order);
 
-    // Line buffer all output.
-    setvbuf (stdout, NULL, _IOLBF, 0);
+    result_t ** by_prev_clock = malloc (result_count * sizeof (result_t *));
+    if (by_prev_clock == NULL)
+        printf_exit ("Out of memory");
+    memcpy (by_prev_clock, results, result_count * sizeof (result_t *));
+    qsort (by_prev_clock, result_count, sizeof (result_t *), prev_clock_order);
+
+    qsort (results, result_count, sizeof (result_t *), clock_midpoint_order);
+
+    int by_clock_i = 0;
+    int by_prev_clock_i = 0;
+    int64_t gap = 0;
+
+    for (int i = 0; i != result_count; ++i) {
+        uint64_t mp = results[i]->clock + results[i]->channel_prev->clock;
+
+        while (by_prev_clock_i < result_count
+               && by_prev_clock[by_prev_clock_i]->channel_prev->clock * 2 < mp)
+            gap += (int) sqrt (gapof (by_prev_clock[by_prev_clock_i++]));
+
+        while (by_clock_i < result_count
+               && by_clock[by_clock_i]->clock * 2 < mp)
+            gap -= (int) sqrt (gapof (by_clock[by_clock_i++]));
+
+        assert (gap >= 0);
+        results[i]->gap = gap;
+    }
+
+    free (by_clock);
+    free (by_prev_clock);
+
+    qsort (results, result_count, sizeof (result_t *), gap_order);
+#else
+    qsort (results, result_count, sizeof (result_t *), biggest_gap_first);
+#endif
+
+#if 1
+    for (int i = 0; i != result_count; ++i)
+        printf ("%16lu [%c] %11lu\n",
+                results[i]->clock, results[i]->pipe + 'A',
+                gapof (results[i]));
+#endif
 
     if (argc <= 1)
         return 0;
-
-    srandom (time (NULL));
 
     pthread_t t;
     pthread_create (&t, NULL, check_thread, NULL);
