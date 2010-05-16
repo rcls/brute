@@ -820,15 +820,20 @@ int main (int argc, char ** argv)
     // each item.
     int slow = 0;
     for (int i = 0; i != result_count; ++i) {
-        const int LIMIT = 8;
+        const int IGNORE = 8;
+        const int LIMIT = 16;
         uint64_t c_start = results[i]->channel_prev->clock;
         uint64_t c_end = results[i]->clock;
 
         int start = find_bound (c_start);
-        int unseen = PIPELINES * STAGES
-            - mask_popcount (masks, base + start, base + i);
-        if (unseen > LIMIT) {
-            results[i]->logprob = LIMIT * prob (c_start, c_end);
+        int unseen = PIPELINES * STAGES - (i - start);
+        if (unseen < LIMIT)
+            // Exact...
+            unseen = PIPELINES * STAGES
+                - mask_popcount (masks, base + start, base + i);
+        assert (unseen >= 1);
+        if (unseen >= LIMIT) {
+            results[i]->logprob = (LIMIT - IGNORE) * prob (c_start, c_end);
             continue;
         }
 
@@ -859,10 +864,14 @@ int main (int argc, char ** argv)
         qsort (logprobs, PIPELINES * STAGES, sizeof (double), compare_double);
 
         double logprob = 0;
-        for (int j = 0; j + virgin < LIMIT; ++j)
+        int skip = 0;
+        if (virgin < IGNORE)
+            skip = IGNORE - virgin;
+        for (int j = skip; j + virgin < LIMIT; ++j)
             logprob += logprobs[j];
 
-        results[i]->logprob = logprob + virgin * prob (c_start, c_end);
+        if (virgin > IGNORE)
+            results[i]->logprob = logprob + (virgin - IGNORE) * prob (c_start, c_end);
     }
     printf ("Slow: %i out of %zi\n", slow, result_count);
 
