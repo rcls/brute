@@ -464,9 +464,9 @@ static uint64_t iterate_MD5 (value_t * __restrict v, uint64_t n)
 
 typedef struct result_t {
     uint64_t clock;
-    int pipe;
     const struct result_t * channel_prev;
-    uint64_t gap;
+    double logprob;
+    int pipe;
     uint32_t data[3];
 } result_t;
 
@@ -694,37 +694,7 @@ static void * check_thread (void * unused)
 }
 
 
-int clock_midpoint_order (const void * AA, const void * BB)
-{
-    const result_t * const * A = AA;
-    const result_t * const * B = BB;
-
-    uint64_t sA = (*A)->clock + (*A)->channel_prev->clock;
-    uint64_t sB = (*B)->clock + (*B)->channel_prev->clock;
-    if (sA < sB)
-        return -1;
-    if (sA > sB)
-        return 1;
-    return 0;
-}
-
-
-int prev_clock_order (const void * AA, const void * BB)
-{
-    const result_t * const * A = AA;
-    const result_t * const * B = BB;
-
-    uint64_t pA = (*A)->channel_prev->clock;
-    uint64_t pB = (*B)->channel_prev->clock;
-    if (pA < pB)
-        return -1;
-    if (pA > pB)
-        return 1;
-    return 0;
-}
-
-
-int clock_order (const void * AA, const void * BB)
+static int clock_order (const void * AA, const void * BB)
 {
     const result_t * const * A = AA;
     const result_t * const * B = BB;
@@ -739,32 +709,26 @@ int clock_order (const void * AA, const void * BB)
 }
 
 
-int gap_order (const void * AA, const void * BB)
+static int logprob_order (const void * AA, const void * BB)
 {
     const result_t * const * A = AA;
     const result_t * const * B = BB;
 
-    uint64_t gA = (*A)->gap;
-    uint64_t gB = (*B)->gap;
-    if (gA < gB)
-        return 1;
-    if (gA > gB)
+    double pA = (*A)->logprob;
+    double pB = (*B)->logprob;
+    if (pA < pB)
         return -1;
+    if (pA > pB)
+        return 1;
     return 0;
 }
 
 
-int biggest_gap_first (const void * AA, const void * BB)
+static inline double prob (uint64_t start, uint64_t end)
 {
-    const result_t * const * A = AA;
-    const result_t * const * B = BB;
-    uint64_t gA = gapof (*A);
-    uint64_t gB = gapof (*B);
-    if (gA < gB)
-        return 1;
-    if (gA > gB)
-        return -1;
-    return 0;
+    const double rate = 1.0 / (1 << 30) / STAGES;
+    double expect = (end - start) * rate;
+    return log1p (expect) - expect;
 }
 
 
@@ -777,53 +741,42 @@ int main (int argc, char ** argv)
 
     print_session_length ("Session", cycles - session_start_cycles);
     print_session_length ("Total", cycles);
-#if 0
-    result_t ** by_clock = malloc (result_count * sizeof (result_t *));
-    if (by_clock == NULL)
-        printf_exit ("Out of memory");
-    memcpy (by_clock, results, result_count * sizeof (result_t *));
-    qsort (by_clock, result_count, sizeof (result_t *), clock_order);
 
-    result_t ** by_prev_clock = malloc (result_count * sizeof (result_t *));
-    if (by_prev_clock == NULL)
-        printf_exit ("Out of memory");
-    memcpy (by_prev_clock, results, result_count * sizeof (result_t *));
-    qsort (by_prev_clock, result_count, sizeof (result_t *), prev_clock_order);
+    qsort (results, result_count, sizeof (result_t *), clock_order);
 
-    qsort (results, result_count, sizeof (result_t *), clock_midpoint_order);
-
-    int by_clock_i = 0;
-    int by_prev_clock_i = 0;
-    int64_t gap = 0;
-
+    // Fill in the logprobs for each range.
     for (int i = 0; i != result_count; ++i) {
-        uint64_t mp = results[i]->clock + results[i]->channel_prev->clock;
+        double logprob = 0;
+        uint64_t c_start = results[i]->channel_prev->clock;
+        uint64_t c_end = results[i]->clock;
+        bool seen[PIPELINES][STAGES];
+        memset (seen, 0, sizeof (seen));
+        int virgin = PIPELINES * STAGES;
+        for (int j = i - 1; j >= 0 && results[j]->clock > c_start; --j) {
+            const result_t * r = results[j];
+            uint64_t c_hi = r->clock;
+            uint64_t c_lo = r->channel_prev->clock;
+            if (c_lo < c_start)
+                c_lo = c_start;
 
-        while (by_prev_clock_i < result_count
-               && by_prev_clock[by_prev_clock_i]->channel_prev->clock * 2 < mp)
-            gap += (int) sqrt (gapof (by_prev_clock[by_prev_clock_i++]));
+            if (!seen[r->pipe][r->clock % STAGES]) {
+                seen[r->pipe][r->clock % STAGES] = true;
+                --virgin;
+                logprob += prob (c_hi, c_end);
+            }
+            logprob += prob (c_lo, c_hi);
+        }
 
-        while (by_clock_i < result_count
-               && by_clock[by_clock_i]->clock * 2 < mp)
-            gap -= (int) sqrt (gapof (by_clock[by_clock_i++]));
-
-        assert (gap >= 0);
-        results[i]->gap = gap;
+        results[i]->logprob = logprob + virgin * prob (c_start, c_end);
     }
 
-    free (by_clock);
-    free (by_prev_clock);
-
-    qsort (results, result_count, sizeof (result_t *), gap_order);
-#else
-    qsort (results, result_count, sizeof (result_t *), biggest_gap_first);
-#endif
+    qsort (results, result_count, sizeof (result_t *), logprob_order);
 
 #if 1
     for (int i = 0; i != result_count; ++i)
-        printf ("%16lu [%c] %11lu\n",
+        printf ("%16lu [%c] %11lu %f\n",
                 results[i]->clock, results[i]->pipe + 'A',
-                gapof (results[i]));
+                gapof (results[i]), results[i]->logprob);
 #endif
 
     if (argc <= 1)
