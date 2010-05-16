@@ -1,5 +1,5 @@
 
-CFLAGS=-O3 -g -flax-vector-conversions -msse -msse2 -march=native -mtune=native -Wall -Winline -Werror -std=gnu99 -MMD -MP -MF.deps/$(subst /,:,$@).d
+CFLAGS=-O3 -g -ffast-math -flax-vector-conversions -msse -msse2 -march=native -mtune=native -Wall -Winline -Werror -std=gnu99 -MMD -MP -MF.deps/$(subst /,:,$@).d
 
 vpath %.so /usr/lib64
 
@@ -18,7 +18,7 @@ bizarre: jtag-io.o -lcrypto
 brute: -lpthread
 #brute LIBS = -lcrypto
 
-collate-check: jtag-io.o -lcrypto -lpthread
+collate-check: jtag-io.o -lcrypto -lpthread -lm
 
 %.s: %.c
 	$(COMPILE.c) -S -o $@ $<

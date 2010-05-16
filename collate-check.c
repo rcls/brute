@@ -708,12 +708,22 @@ static int clock_order (const void * AA, const void * BB)
     return 0;
 }
 
+static inline int compare_double (const void * AA, const void * BB)
+{
+    double A = * (const double *) AA;
+    double B = * (const double *) BB;
+    if (A < B)
+        return -1;
+    if (A > B)
+        return 1;
+    return 0;
+}
+
 
 static int logprob_order (const void * AA, const void * BB)
 {
     const result_t * const * A = AA;
     const result_t * const * B = BB;
-
     double pA = (*A)->logprob;
     double pB = (*B)->logprob;
     if (pA < pB)
@@ -728,7 +738,56 @@ static inline double prob (uint64_t start, uint64_t end)
 {
     const double rate = 1.0 / (1 << 30) / STAGES;
     double expect = (end - start) * rate;
-    return log1p (expect) - expect;
+    return __builtin_log1p (expect) - expect;
+}
+
+
+// Find the first result after clock.  Assumes there is one!
+static int find_bound (uint64_t clock)
+{
+    int low = -1;
+    int high = result_count - 1;
+
+    while (high - low > 1) {
+        int mid = (low + high) >> 1;
+        if (results[mid]->clock > clock)
+            high = mid;
+        else
+            low = mid;
+    }
+
+    assert (low == -1 || results[low]->clock <= clock);
+    assert (results[high]->clock > clock);
+    return high;
+}
+
+
+#define LBITS (sizeof (unsigned long) * 8)
+#define MASK_SIZE ((STAGES * PIPELINES + LBITS - 1) / LBITS)
+typedef unsigned long mask_t[MASK_SIZE];
+static int mask_popcount (mask_t * masks, int low, int high)
+{
+    mask_t m;
+    for (int i = 0; i != MASK_SIZE; ++i)
+        m[i] = 0;
+    while (low < high) {
+        if (low & 1) {
+            for (int i =0; i != MASK_SIZE; ++i)
+                m[i] |= masks[low][i];
+            low++;
+        }
+        if (high & 1) {
+            --high;
+            for (int i =0; i != MASK_SIZE; ++i)
+                m[i] |= masks[high][i];
+        }
+        low >>= 1;
+        high >>= 1;
+    }
+    int result = 0;
+    for (int i = 0; i != MASK_SIZE; ++i)
+        result += __builtin_popcountl (m[i]);
+    return result;
 }
 
 
@@ -744,31 +803,68 @@ int main (int argc, char ** argv)
 
     qsort (results, result_count, sizeof (result_t *), clock_order);
 
-    // Fill in the logprobs for each range.
+    // Build bitmasks.
+    int base = 1 << (32 - __builtin_clz (result_count - 1));
+    assert (base >= result_count);
+    assert (base < result_count * 2);
+    mask_t * masks = calloc (base, 2 * sizeof (mask_t));
     for (int i = 0; i != result_count; ++i) {
-        double logprob = 0;
+        unsigned bit = results[i]->clock % STAGES + results[i]->pipe * STAGES;
+        masks[base + i][bit / LBITS] = 1ul << (bit % LBITS);
+    }
+    for (int i = base - 1; i >= 0; --i)
+        for (int j = 0; j != MASK_SIZE; ++j)
+            masks[i][j] = masks[2*i][j] | masks[2*i+1][j];
+
+    // Fill in the logprobs for each range.  We select the 16 worst cases for
+    // each item.
+    int slow = 0;
+    for (int i = 0; i != result_count; ++i) {
+        const int LIMIT = 8;
         uint64_t c_start = results[i]->channel_prev->clock;
         uint64_t c_end = results[i]->clock;
-        bool seen[PIPELINES][STAGES];
-        memset (seen, 0, sizeof (seen));
+
+        int start = find_bound (c_start);
+        int unseen = PIPELINES * STAGES
+            - mask_popcount (masks, base + start, base + i);
+        if (unseen > LIMIT) {
+            results[i]->logprob = LIMIT * prob (c_start, c_end);
+            continue;
+        }
+
+        ++slow;
+        double logprobs[PIPELINES * STAGES];
+        for (int i = 0; i != PIPELINES * STAGES; ++i)
+            logprobs[i] = 1;
+
         int virgin = PIPELINES * STAGES;
-        for (int j = i - 1; j >= 0 && results[j]->clock > c_start; --j) {
+        for (int j = i - 1; j >= start; --j) {
             const result_t * r = results[j];
             uint64_t c_hi = r->clock;
             uint64_t c_lo = r->channel_prev->clock;
             if (c_lo < c_start)
                 c_lo = c_start;
 
-            if (!seen[r->pipe][r->clock % STAGES]) {
-                seen[r->pipe][r->clock % STAGES] = true;
+            double logprob = prob (c_lo, c_hi);
+
+            unsigned index = r->clock % STAGES + r->pipe * STAGES;
+            if (logprobs[index] == 1) {
                 --virgin;
-                logprob += prob (c_hi, c_end);
+                logprobs[index] = prob (c_hi, c_end);
             }
-            logprob += prob (c_lo, c_hi);
+            logprobs[index] += logprob;
         }
+        assert (virgin == unseen);
+
+        qsort (logprobs, PIPELINES * STAGES, sizeof (double), compare_double);
+
+        double logprob = 0;
+        for (int j = 0; j + virgin < LIMIT; ++j)
+            logprob += logprobs[j];
 
         results[i]->logprob = logprob + virgin * prob (c_start, c_end);
     }
+    printf ("Slow: %i out of %zi\n", slow, result_count);
 
     qsort (results, result_count, sizeof (result_t *), logprob_order);
 
