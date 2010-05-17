@@ -678,17 +678,21 @@ static void * check_thread (void * unused)
                         EXTRACT (vv[2], i));
         }
 
-        iterations = remain[0];
+        uint64_t target = remain[0];
         for (int i = 1; i != 4; ++i)
-            if (remain[i] < iterations)
-                iterations = remain[i];
+            if (remain[i] < target)
+                target = remain[i];
 
-        iterations = iterate_MD5 (vv, iterations);
+        iterations = iterate_MD5 (vv, target);
         total += iterations;
 
+        target -= iterations;
         time_t elapsed = time (NULL) - start;
-        fprintf (stderr, "Iterations: %lu, seconds %lu, per-sec %lu\n",
-                 total, elapsed, total / elapsed);
+        fprintf (stderr,
+                 "Iterations: %lu, seconds %lu (%lu to go), per-sec %lu\n",
+                 total, elapsed,
+                 target * elapsed / total,
+                 total / elapsed);
     }
     return NULL;
 }
