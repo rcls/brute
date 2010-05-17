@@ -61,12 +61,12 @@ static inline value_t ANDN (value_t a, value_t b)
 #define LEFT(a,n) __builtin_ia32_pslldi128 (a, n)
 
 
-static INLINE uint32_t EXTRACT (value_t v, int index)
+static INLINE uint32_t EXTRACT (value_t v, int idx)
 {
-    if (__builtin_constant_p (index) && index == 0)
+    if (__builtin_constant_p (idx) && idx == 0)
         return FIRST (v);
 
-    switch (index) {
+    switch (idx) {
     case 0:
         return FIRST (v);
     case 1:
@@ -80,12 +80,12 @@ static INLINE uint32_t EXTRACT (value_t v, int index)
 }
 
 
-static value_t INSERT (value_t v, int index, uint32_t vv)
+static value_t INSERT (value_t v, int idx, uint32_t vv)
 {
     value_t mask;
     value_t ins;
 
-    switch (index) {
+    switch (idx) {
     case 0:
         mask = (value_t) { 0, -1, -1, -1 };
         ins = (value_t) { vv, 0, 0, 0 };
@@ -241,22 +241,22 @@ static INLINE void EXPAND (value_t v,
 #define SPLIT(v,V0,V1) value_t V0; value_t V1; EXPAND (v, &V0, &V1);
 
 
-static INLINE value_t TRIM (value_t a, unsigned index)
+static INLINE value_t TRIM (value_t a, unsigned idx)
 {
 #define TRDEBUG NODEBUG
-    index *= 32;
-    if (index + 32 <= BITS) {
-        TRDEBUG ("%u - all\n", index);
+    idx *= 32;
+    if (idx + 32 <= BITS) {
+        TRDEBUG ("%u - all\n", idx);
         return a;
     }
-    if (index >= BITS) {
-        TRDEBUG ("%u - none\n", index);
+    if (idx >= BITS) {
+        TRDEBUG ("%u - none\n", idx);
         return DIAG (0);
     }
-    TRDEBUG ("%u...", index);
-    index = BITS - index;
-    TRDEBUG ("%u...", index);
-    unsigned mask = 0xffffffff << (32 - index);
+    TRDEBUG ("%u...", idx);
+    idx = BITS - idx;
+    TRDEBUG ("%u...", idx);
+    unsigned mask = 0xffffffff << (32 - idx);
     TRDEBUG ("%08x\n", mask);
 
     return AND (a, DIAG (SWAP (mask)));
@@ -640,11 +640,11 @@ static const result_t * finish (value_t * __restrict vv,
                 EXTRACT (vv[2], i),
                 r->data[0], r->data[1], r->data[2]);
 
-    int index = __sync_add_and_fetch (&global_result_index, 1) - 1;
-    if (index >= result_count)
-        index = random() % result_count;
+    int idx = __sync_add_and_fetch (&global_result_index, 1) - 1;
+    if (idx >= result_count)
+        idx = random() % result_count;
 
-    r = results[index];
+    r = results[idx];
     vv[0] = INSERT (vv[0], i, r->channel_prev->data[0]);
     vv[1] = INSERT (vv[1], i, r->channel_prev->data[1]);
     vv[2] = INSERT (vv[2], i, r->channel_prev->data[2]);
@@ -738,30 +738,34 @@ static int logprob_order (const void * AA, const void * BB)
 }
 
 
-static inline double prob (uint64_t start, uint64_t end)
+static inline double prob (uint64_t start, uint64_t end, int num)
 {
     const double rate = 1.0 / (1 << 30) / STAGES;
     double expect = (end - start) * rate;
-    return __builtin_log1p (expect) - expect;
+    if (num >= expect)
+        return 0;
+
+    double stddevs = (expect - num) / sqrt (expect);
+    return -0.5 * stddevs * stddevs;
 }
 
 
 // Find the first result after clock.  Assumes there is one!
-static int find_bound (uint64_t clock)
+static int find_bound (uint64_t clck)
 {
     int low = -1;
     int high = result_count - 1;
 
     while (high - low > 1) {
         int mid = (low + high) >> 1;
-        if (results[mid]->clock > clock)
+        if (results[mid]->clock > clck)
             high = mid;
         else
             low = mid;
     }
 
-    assert (low == -1 || results[low]->clock <= clock);
-    assert (results[high]->clock > clock);
+    assert (low == -1 || results[low]->clock <= clck);
+    assert (results[high]->clock > clck);
     return high;
 }
 
@@ -797,9 +801,6 @@ static int mask_popcount (mask_t * masks, int low, int high)
 
 int main (int argc, char ** argv)
 {
-    // Line buffer all output.
-    setvbuf (stdout, NULL, _IOLBF, 0);
-
     read_log_file();
 
     print_session_length ("Session", cycles - session_start_cycles);
@@ -823,59 +824,70 @@ int main (int argc, char ** argv)
     // Fill in the logprobs for each range.  We select the 16 worst cases for
     // each item.
     int slow = 0;
-    for (int i = 0; i != result_count; ++i) {
-        const int IGNORE = 8;
-        const int LIMIT = 16;
-        uint64_t c_start = results[i]->channel_prev->clock;
-        uint64_t c_end = results[i]->clock;
+    for (int end = 0; end != result_count; ++end) {
+        const int IGNORE = 6;
+        const int LIMIT = 12;
+        uint64_t c_start = results[end]->channel_prev->clock;
+        uint64_t c_end = results[end]->clock;
 
         int start = find_bound (c_start);
-        int unseen = PIPELINES * STAGES - (i - start);
+        int unseen = PIPELINES * STAGES - (end - start);
         if (unseen < LIMIT)
             // Exact...
             unseen = PIPELINES * STAGES
-                - mask_popcount (masks, base + start, base + i);
+                - mask_popcount (masks, base + start, base + end);
         assert (unseen >= 1);
         if (unseen >= LIMIT) {
-            results[i]->logprob = (LIMIT - IGNORE) * prob (c_start, c_end);
+            results[end]->logprob = (LIMIT - IGNORE) * prob (c_start, c_end, 0);
             continue;
         }
 
         ++slow;
-        double logprobs[PIPELINES * STAGES];
-        for (int i = 0; i != PIPELINES * STAGES; ++i)
-            logprobs[i] = 1;
 
-        int virgin = PIPELINES * STAGES;
-        for (int j = i - 1; j >= start; --j) {
+#define FREQSIZE 10000
+        static int freqs[10000];
+
+        int counts[PIPELINES * STAGES];
+        memset (counts, 0, sizeof (counts));
+        int max = 0;
+        freqs[0] = PIPELINES * STAGES;
+
+        for (int j = end - 1; j >= start; --j) {
             const result_t * r = results[j];
-            uint64_t c_hi = r->clock;
-            uint64_t c_lo = r->channel_prev->clock;
-            if (c_lo < c_start)
-                c_lo = c_start;
-
-            double logprob = prob (c_lo, c_hi);
-
-            unsigned index = r->clock % STAGES + r->pipe * STAGES;
-            if (logprobs[index] == 1) {
-                --virgin;
-                logprobs[index] = prob (c_hi, c_end);
+            int * count = &counts[r->clock % STAGES + r->pipe * STAGES];
+            --freqs[*count];
+            ++*count;
+            if (*count > max) {
+                max = *count;
+                freqs[*count] = 1;
             }
-            logprobs[index] += logprob;
+            else {
+                ++freqs[*count];
+            }
         }
-        assert (virgin == unseen);
+        assert (freqs[0] == unseen);
 
-        qsort (logprobs, PIPELINES * STAGES, sizeof (double), compare_double);
+        int sum = 0;
+        for (int j = 0; j <= max; ++j) {
+            assert (freqs[j] >= 0);
+            sum += freqs[j];
+        }
+        assert (sum == STAGES * PIPELINES);
+        int ignore = IGNORE;
+        int j = 0;
+        for (; freqs[j] <= ignore; ++j)
+            ignore -= freqs[j];
+        freqs[j] -= ignore;
 
         double logprob = 0;
-        int skip = 0;
-        if (virgin < IGNORE)
-            skip = IGNORE - virgin;
-        for (int j = skip; j + virgin < LIMIT; ++j)
-            logprob += logprobs[j];
-
-        if (virgin > IGNORE)
-            results[i]->logprob = logprob + (virgin - IGNORE) * prob (c_start, c_end);
+        int num = LIMIT - IGNORE;
+        for (; freqs[j] < num; ++j) {
+            logprob += freqs[j] * prob (c_start, c_end, j);
+            num -= freqs[j];
+        }
+        assert (j <= max);
+        logprob += num * prob (c_start, c_end, j);
+        results[end]->logprob = logprob;
     }
     printf ("Slow: %i out of %zi\n", slow, result_count);
 
@@ -890,6 +902,9 @@ int main (int argc, char ** argv)
 
     if (argc <= 1)
         return 0;
+
+    // Line buffer all output.
+    setvbuf (stdout, NULL, _IOLBF, 0);
 
     pthread_t t;
     pthread_create (&t, NULL, check_thread, NULL);
