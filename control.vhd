@@ -3,6 +3,9 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
 use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
+-- cost table 94 gets closure but with 2.5hour PAR times!
+-- ct2 gets 20ps, ct86 gets 7ps.
+
 ---- Uncomment the following library declaration if instantiating
 ---- any Xilinx primitives in this code.
 library UNISIM;

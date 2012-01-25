@@ -499,10 +499,15 @@ static void read_log_result()
     current[slot] = r;
 
     if (r->channel_prev != NULL) {
-        results = realloc (results, ++result_count * sizeof (result_t *));
+        if ((result_count & (result_count - 1)) == 0) {
+            int size = 2 * result_count;
+            if (size == 0)
+                size = 1;
+            results = realloc (results, size * sizeof (result_t *));
+        }
         if (results == NULL)
             printf_exit ("Out of memory (result array)\n");
-        results[result_count - 1] = r;
+        results[result_count++] = r;
         cycles += (r->clock - r->channel_prev->clock) / STAGES;
     }
 }
@@ -806,6 +811,9 @@ int main (int argc, char ** argv)
     print_session_length ("Session", cycles - session_start_cycles);
     print_session_length ("Total", cycles);
 
+    if (argc <= 1)
+        return 0;
+
     qsort (results, result_count, sizeof (result_t *), clock_order);
 
     // Build bitmasks.
@@ -826,9 +834,13 @@ int main (int argc, char ** argv)
     int slow = 0;
     for (int end = 0; end != result_count; ++end) {
         const int IGNORE = 6;
-        const int LIMIT = 12;
+        const int LIMIT = 16;
         uint64_t c_start = results[end]->channel_prev->clock;
         uint64_t c_end = results[end]->clock;
+
+        int adj = 0;
+        if (c_start < 2598307354424730 && c_end > 2598307354424730)
+            adj = -20;
 
         int start = find_bound (c_start);
         int unseen = PIPELINES * STAGES - (end - start);
@@ -836,9 +848,9 @@ int main (int argc, char ** argv)
             // Exact...
             unseen = PIPELINES * STAGES
                 - mask_popcount (masks, base + start, base + end);
-        assert (unseen >= 1);
         if (unseen >= LIMIT) {
-            results[end]->logprob = (LIMIT - IGNORE) * prob (c_start, c_end, 0);
+            results[end]->logprob
+                = adj + (LIMIT - IGNORE) * prob (c_start, c_end, 0);
             continue;
         }
 
@@ -866,6 +878,14 @@ int main (int argc, char ** argv)
             }
         }
         assert (freqs[0] == unseen);
+        if (unseen <= 0) {
+            printf ("%d %d %ld %ld\n", unseen, end, c_start, c_end);
+            for (int i = start; i <= end; ++i)
+                if (results[i]->clock % 195 == c_end % 195
+                    && results[i]->pipe == results[end]->pipe)
+                    printf ("%d %ld\n", i, results[i]->clock);
+        }
+        assert (unseen >= 1);
 
         int sum = 0;
         for (int j = 0; j <= max; ++j) {
@@ -887,21 +907,19 @@ int main (int argc, char ** argv)
         }
         assert (j <= max);
         logprob += num * prob (c_start, c_end, j);
-        results[end]->logprob = logprob;
+        results[end]->logprob = adj + logprob;
     }
     printf ("Slow: %i out of %zi\n", slow, result_count);
 
     qsort (results, result_count, sizeof (result_t *), logprob_order);
 
-#if 1
-    for (int i = 0; i != result_count; ++i)
-        printf ("%16lu [%c] %11lu %f\n",
-                results[i]->clock, results[i]->pipe + 'A',
-                gapof (results[i]), results[i]->logprob);
-#endif
-
-    if (argc <= 1)
+    if (strcmp (argv[1], "go") != 0) {
+        for (int i = 0; i != result_count; ++i)
+            printf ("%16lu [%c] %11lu %f\n",
+                    results[i]->clock, results[i]->pipe + 'A',
+                    gapof (results[i]), results[i]->logprob);
         return 0;
+    }
 
     // Line buffer all output.
     setvbuf (stdout, NULL, _IOLBF, 0);
