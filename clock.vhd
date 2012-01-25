@@ -54,7 +54,7 @@ begin
             CLKFX_DIVIDE => 5,
             CLKFX_MULTIPLY => 6,
             CLKIN_DIVIDE_BY_2 => FALSE,
-            CLKIN_PERIOD => 8.0,
+            CLKIN_PERIOD => 8.000,
             CLKOUT_PHASE_SHIFT => "NONE",
             DESKEW_ADJUST => "SYSTEM_SYNCHRONOUS",
             DFS_FREQUENCY_MODE => "LOW",

@@ -174,7 +174,7 @@ architecture Behavioral of md5 is
   constant iAneg : word_t := x"00000000" - iA;
 
   component delay is
-    generic (N : integer);
+    generic (N : integer; extra_buf : integer := 0);
     port (clk: in std_logic; D: in word_t; Q: out word_t);
   end component;
 
@@ -211,7 +211,14 @@ begin
     Fxd: delay generic map(N=> 3*i+1) port map (D=> xx(i), Q=> Fx(i), Clk=>Clk);
   end generate;
 
-  XxdGen: for i in 0 to 5 generate
+  Gxd: delay generic map(N=>D12(0), extra_buf => 1)
+    port map (D=> Fx(0), Q=> Gx(0), Clk=>Clk);
+  Hxd: delay generic map(N=>D23(0), extra_buf => 1)
+    port map (D=> Gx(0), Q=> Hx(0), Clk=>Clk);
+  Ixd: delay generic map(N=>D34(0), extra_buf => 1)
+    port map (D=> Hx(0), Q=> Ix(0), Clk=>Clk);
+
+  XxdGen: for i in 1 to 5 generate
     Gxd: delay generic map(N=>D12(i)) port map (D=> Fx(i), Q=> Gx(i), Clk=>Clk);
     Hxd: delay generic map(N=>D23(i)) port map (D=> Gx(i), Q=> Hx(i), Clk=>Clk);
     Ixd: delay generic map(N=>D34(i)) port map (D=> Hx(i), Q=> Ix(i), Clk=>Clk);
